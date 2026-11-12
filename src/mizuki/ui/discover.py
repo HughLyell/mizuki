@@ -345,6 +345,11 @@ class DiscoverPage(Gtk.Box):
             self.settings.add_recent_search(text)
             self._update_empty_suggestions()
         sources = self._selected_sources()
+        log.info(
+            "Search source=%s tags=%r safe=%s sort=%s page=%s sources=%s",
+            self._source_id, text, safe, sort, self._query.page,
+            [source.id for source in sources],
+        )
         self._build_query_chips()
         self._loading = True
         self.search_button.set_sensitive(False)
@@ -396,6 +401,7 @@ class DiscoverPage(Gtk.Box):
             self._stack.set_visible_child_name("empty")
         if errors:
             self.on_warning(errors[0] if len(errors) == 1 else f"{len(errors)} sources could not be reached.")
+            log.warning("Search completed with errors: %s", " | ".join(errors))
         if not posts and not errors and self._has_more:
             self._has_more = False
             self.grid.set_state(has_more=False)
@@ -403,6 +409,7 @@ class DiscoverPage(Gtk.Box):
     def _on_error(self, message: str) -> None:
         self._loading = False
         self.grid.set_state(loading=False, has_more=False)
+        log.warning("Search failed: %s", message)
         if self.grid.count == 0:
             self._show_error(message)
         else:

@@ -66,6 +66,7 @@ class SearchController:
                 try:
                     pages.append(future.result())
                 except SourceError as exc:
+                    log.warning("Source %s failed: %s", source.id, exc)
                     errors.append(f"{source.name}: {exc}")
                 except Exception as exc:  # pragma: no cover - third-party sources
                     log.exception("Source %s failed", source.id)

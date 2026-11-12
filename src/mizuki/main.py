@@ -3,10 +3,39 @@
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import os
 import sys
 
 from . import APP_NAME, __version__
+from . import config
+
+
+def _configure_logging() -> None:
+    debug = bool(os.environ.get("MIZUKI_DEBUG"))
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    stream = logging.StreamHandler()
+    stream.setLevel(logging.DEBUG if debug else logging.INFO)
+    stream.setFormatter(formatter)
+
+    handlers: list[logging.Handler] = [stream]
+    try:
+        config.ensure_dir(config.CACHE_DIR)
+        file_handler = logging.handlers.RotatingFileHandler(
+            config.CACHE_DIR / "mizuki.log",
+            maxBytes=1_000_000,
+            backupCount=2,
+            encoding="utf-8",
+        )
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(formatter)
+        handlers.append(file_handler)
+    except OSError:
+        pass
+
+    logging.basicConfig(level=logging.DEBUG, handlers=handlers, force=True)
+    logging.getLogger(__name__).info("Mizuki %s starting", __version__)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -19,10 +48,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{APP_NAME} {__version__}")
         return 0
 
-    logging.basicConfig(
-        level=logging.DEBUG if os.environ.get("MIZUKI_DEBUG") else logging.INFO,
-        format="%(levelname)s %(name)s: %(message)s",
-    )
+    _configure_logging()
 
     try:
         import gi
