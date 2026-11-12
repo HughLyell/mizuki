@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 import gi
 
@@ -94,7 +95,8 @@ class MizukiWindow(Adw.ApplicationWindow):
         self.switch_page("discover", refresh=False)
         self._update_download_badge()
         self.connect("close-request", self._on_close_request)
-        GLib.idle_add(self._initial_load)
+        if os.environ.get("MIZUKI_SMOKE_TEST") != "1":
+            GLib.idle_add(self._initial_load)
 
     # -- shell -----------------------------------------------------------
     def _build_header(self) -> Adw.HeaderBar:
@@ -154,14 +156,24 @@ class MizukiWindow(Adw.ApplicationWindow):
         self.split_view = Adw.NavigationSplitView()
         self.split_view.set_min_sidebar_width(248)
         self.split_view.set_max_sidebar_width(300)
-        self.split_view.set_sidebar(self._build_sidebar())
+
+        sidebar_page = Adw.NavigationPage()
+        sidebar_page.set_title("Mizuki")
+        sidebar_page.set_tag("sidebar")
+        sidebar_page.set_child(self._build_sidebar())
+        self.split_view.set_sidebar(sidebar_page)
 
         self.page_stack = Gtk.Stack()
         self.page_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self.page_stack.set_transition_duration(140)
         self.page_stack.set_vexpand(True)
         self.page_stack.set_hexpand(True)
-        self.split_view.set_content(self.page_stack)
+
+        content_page = Adw.NavigationPage()
+        content_page.set_title("Browse")
+        content_page.set_tag("content")
+        content_page.set_child(self.page_stack)
+        self.split_view.set_content(content_page)
         return self.split_view
 
     def _build_sidebar(self) -> Gtk.Widget:

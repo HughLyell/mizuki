@@ -3,22 +3,28 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
+import traceback
+from pathlib import Path
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, Gio, GLib  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from . import APP_NAME  # noqa: E402
 from . import config  # noqa: E402
 from .favorites import FavoriteStore  # noqa: E402
+from .models import Post  # noqa: E402
 from .services.downloads import DownloadManager  # noqa: E402
 from .services.search import SearchController  # noqa: E402
 from .services.thumbnail_loader import ThumbnailLoader  # noqa: E402
 from .settings import Settings  # noqa: E402
 from .sources import SourceRegistry  # noqa: E402
+from .ui.detail import ImageDetailDialog  # noqa: E402
+from .ui.preferences import PreferencesDialog  # noqa: E402
 from .ui.theme import ThemeManager  # noqa: E402
 from .ui.window import MizukiWindow  # noqa: E402
 
@@ -58,6 +64,106 @@ class MizukiApplication(Adw.Application):
         if log.isEnabledFor(logging.DEBUG):
             elapsed = (time.perf_counter() - self._start_time) * 1000
             log.debug("Mizuki window ready in %.0f ms", elapsed)
+        if os.environ.get("MIZUKI_SMOKE_TEST") == "1":
+            GLib.timeout_add(900, self._run_smoke_test)
+        elif os.environ.get("MIZUKI_SCREENSHOT"):
+            try:
+                delay = max(1, int(os.environ.get("MIZUKI_SCREENSHOT_DELAY", "5")))
+            except ValueError:
+                delay = 5
+            GLib.timeout_add(delay * 1000, self._capture_screenshot)
+
+    def _capture_screenshot(self):
+        """Save the rendered window to PNG, then quit.
+
+        Useful for visual regression checks on a real display or under Xvfb.
+        Set ``MIZUKI_SCREENSHOT=/path/window.png`` and optionally
+        ``MIZUKI_SCREENSHOT_DELAY=5``.
+        """
+        path = Path(os.environ["MIZUKI_SCREENSHOT"]).expanduser()
+        try:
+            if self.window is None:
+                raise RuntimeError("No application window")
+            paintable = Gtk.WidgetPaintable.new(self.window)
+            image = paintable.get_current_image()
+            if not isinstance(image, Gdk.Texture):
+                raise RuntimeError(f"Unexpected paintable snapshot: {type(image).__name__}")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            image.save_to_png(str(path))
+            print(f"MIZUKI SCREENSHOT: {path}", flush=True)
+        except Exception:
+            traceback.print_exc()
+            print("MIZUKI SCREENSHOT: FAIL", flush=True)
+        self.quit()
+        return False
+
+    def _run_smoke_test(self):
+        """Build and exercise every major widget without relying on the network.
+
+        Run with ``./run.sh --smoke-test``. This catches GTK/libadwaita API
+        mistakes that unit tests cannot see, without needing synthetic input.
+        """
+        try:
+            window = self.window
+            if window is None:
+                raise RuntimeError("No application window")
+            for page in ("favorites", "downloads", "discover"):
+                window.switch_page(page)
+
+            sample = Post(
+                id="smoke-test",
+                source="local",
+                source_name="Smoke test",
+                thumb_url="",
+                preview_url="",
+                file_url="",
+                page_url="",
+                width=1920,
+                height=1080,
+                tags=("landscape", "smoke_test"),
+                rating="safe",
+                artist="Mizuki",
+                ext="jpg",
+            )
+            window.discover.grid.append([sample])
+            window.discover._stack.set_visible_child_name("grid")
+
+            detail = ImageDetailDialog(
+                sample,
+                window.loader,
+                window.favorites,
+                on_download=window._download_post,
+                on_favorite=window._toggle_favorite,
+                on_tag_activate=window._search_tag,
+            )
+            detail.present(window)
+            detail.close()
+
+            preferences = PreferencesDialog(
+                window.settings,
+                window.registry,
+                on_request_safe=window.request_safe_search,
+                on_notice=window.toast,
+            )
+            preferences.present(window)
+            preferences.close()
+
+            window.favorites_page.refresh()
+            window.downloads_page.refresh()
+            window._apply_accent()
+            window._apply_color_scheme()
+        except Exception:
+            traceback.print_exc()
+            print("MIZUKI GUI SMOKE: FAIL", flush=True)
+            self.quit()
+            return False
+        print("MIZUKI GUI SMOKE: OK", flush=True)
+        GLib.timeout_add(150, self._quit_smoke_test)
+        return False
+
+    def _quit_smoke_test(self):
+        self.quit()
+        return False
 
     def do_shutdown(self) -> None:
         try:

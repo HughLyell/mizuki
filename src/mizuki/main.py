@@ -11,6 +11,10 @@ from . import APP_NAME, __version__
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv if argv is None else argv)
+    smoke_test = "--smoke-test" in argv[1:]
+    if smoke_test:
+        argv = [argument for argument in argv if argument != "--smoke-test"]
+        os.environ["MIZUKI_SMOKE_TEST"] = "1"
     if any(arg in ("--version", "-v") for arg in argv[1:]):
         print(f"{APP_NAME} {__version__}")
         return 0

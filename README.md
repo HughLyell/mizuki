@@ -270,7 +270,7 @@ requirements and testing advice.
 ## Development
 
 ```bash
-make test     # pure-Python unit tests (32+ tests, no display needed)
+make test     # pure-Python unit tests (no display needed)
 make lint     # byte-compile every module
 make run      # launch from the checkout
 ```
@@ -278,6 +278,26 @@ make run      # launch from the checkout
 The test suite covers tag parsing, query construction, rating normalisation,
 filename safety, the Zerochan markup parser, result merging, settings
 validation and the favourites store.
+
+### GUI smoke test
+
+Unit tests cannot catch GTK API mistakes, so a display-backed smoke test builds
+every major widget offline and exits:
+
+```bash
+./run.sh --smoke-test
+# or
+bash scripts/gui-check.sh
+```
+
+`gui-check.sh` captures the output in
+`~/.cache/mizuki/gui-check/smoke.log` and exits non-zero on a crash. Add
+`--screenshot` to launch the real app for a few seconds and capture the screen
+with `grim`, `gnome-screenshot`, Spectacle or ImageMagick:
+
+```bash
+bash scripts/gui-check.sh --screenshot
+```
 
 ## Legal
 
