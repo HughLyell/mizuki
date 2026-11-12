@@ -86,7 +86,7 @@ class MizukiApplication(Adw.Application):
                 raise RuntimeError("No application window")
             paintable = Gtk.WidgetPaintable.new(self.window)
             image = paintable.get_current_image()
-            if not isinstance(image, Gdk.Texture):
+            if image is None or not hasattr(image, "save_to_png"):
                 raise RuntimeError(f"Unexpected paintable snapshot: {type(image).__name__}")
             path.parent.mkdir(parents=True, exist_ok=True)
             image.save_to_png(str(path))
