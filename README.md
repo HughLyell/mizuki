@@ -4,14 +4,10 @@
 
 Mizuki is a GTK4 + libadwaita application for browsing and downloading anime
 artwork from multiple boorus and image boards. It has a Material You-inspired
-interface, modular sources, tag search, SFW controls, favourites and a
-background download queue — with no Electron, Node.js, WebKit or embedded
+interface with no Electron, Node.js, WebKit or embedded
 browser.
 
 - **Stack:** Python 3 + PyGObject + GTK 4 + libadwaita
-- **Target:** GNOME and KDE Plasma, Wayland or X11
-- **Design:** rounded artwork cards, mauve accent palette, and a collapsible
-  side panel with sources and removable recent searches
 
 ## Features
 
@@ -31,13 +27,8 @@ browser.
 - **SFW controls** — safe search is on by default, filters at the source, and
   requires confirmation before it can be disabled. Sources without a safe
   subset stay filtered. Sensitive thumbnails are covered by default.
-- **Justified artwork grid** — responsive, keyboard-accessible tiles that keep
-  each image’s rough aspect ratio, with proportional widths and a shared row
-  height. Compact/comfortable/large size settings and hover actions included.
-- **Collapsible sidebar** — hide the side panel to let the gallery reclaim the
-  width and reflow immediately; the choice is remembered between launches.
-- **Recent searches** — the sidebar keeps your latest six searches as clickable
-  chips. Click the cross on a chip to remove it.
+- **Infinity grid** — responsive, keyboard-accessible artwork tiles with
+  hover actions and a compact/comfortable/large size setting.
 - **Detail view** — high-resolution preview, metadata, clickable tags,
   copy-link and open-source actions.
 - **Downloads** — background queue with progress, cancel/retry, file manager
@@ -132,24 +123,6 @@ flatpak run io.github.hughlyell.Mizuki
 The manifest targets `org.gnome.Platform` 48, which ships Python 3 and
 PyGObject. Bump `runtime-version` when a newer runtime is available.
 
-## Performance
-
-Mizuki is deliberately small and native:
-
-- No browser engine, JavaScript runtime or Node.js process.
-- Source modules are imported lazily when the registry is created.
-- Network search, tag autocomplete and downloads run on worker threads, so the
-  GTK main loop never waits on the network.
-- Thumbnails and opened previews share an LRU texture cache capped at 240
-  textures, plus a 400 MB on-disk cache under `~/.cache/mizuki/thumbnails`.
-- The detail dialog paints the already-loaded thumbnail immediately, then
-  replaces it with a larger preview fetched in the background.
-- **Target:** window visible quickly and memory below 300 MB. Measured on
-  Fedora 43 with GTK 4.24 / Python 3.15: about **0.6–0.8 s cold start** and
-  **~157 MB RSS** with 120 thumbnails loaded. PyGObject + GTK import alone is
-  roughly 0.38 s, so the 200 ms startup goal would require a compiled
-  C/Vala/Rust front end. `MIZUKI_DEBUG=1` prints UI and total startup timings.
-
 ## Keyboard shortcuts
 
 | Shortcut | Action |
@@ -163,75 +136,14 @@ Mizuki is deliberately small and native:
 | `F1` | About Mizuki |
 | `Ctrl+Q` | Quit |
 
-## Search tips
 
-- Separate tags with spaces: `1girl landscape sky` (AND).
-- Prefix a tag with `-` to exclude it on boorus that support it: `landscape -monochrome`.
-- Quote a phrase to keep it together: `"blue sky"`.
-- Multi-word tag names can be typed naturally: `Zenless Zone Zero`. Zerochan
-  treats the phrase as one tag; booru sources automatically retry it as
-  `zenless_zone_zero` when the normal tag split returns nothing.
-- Use commas to search multiple tags on a source that supports spaces in tag
-  names (for example Zerochan): `Zenless Zone Zero, landscape`.
-- Use the **Filter** field under the source selector to narrow the currently
-  loaded results for that one source. Separate tags with commas: `1girl, smile`.
-  Every tag must match. The filter is hidden when “All sources” is selected and
-  each source remembers its own filter.
-- Click any tag chip in the detail view to search for it.
-- Recent searches in the sidebar are one-click searches. Click the small cross
-  on a recent-search chip to remove it from the list.
-- Use the sidebar toggle in the header to hide the side panel and let the grid
-  use the full window width.
-- `rating:` and `order:` metatags typed by the user are stripped so the app's
-  SFW policy and sort controls stay authoritative.
-- Zerochan supports multiple tags comma-separated; Mizuki handles this
-  automatically.
-
-## Source search syntax
-
-Mizuki normalises queries per source and tries safe phrase fallbacks for
-multi-word tag names:
-
-- **Two-word input** such as `hatsune miku` is tried first as
-  `hatsune_miku`, then as two separate tags.
-- **Three or more words** such as `Zenless Zone Zero` are tried normally, then
-  as one underscored tag.
-- **Commas** are explicit tag groups: `Hatsune Miku, landscape` searches
-  `Hatsune_Miku` and `landscape` on conventional boorus, and
-  `Hatsune Miku` + `landscape` on Zerochan.
-
-| Source | Search syntax | Notes |
-|---|---|---|
-| **Danbooru** | `tag1 tag2`, `-tag`, `tag*`, `{a ~ b}`, `score:>100`, `order:` metatags | 2-tag limit for anonymous requests; max 200 results/page |
-| **Safebooru** | Gelbooru syntax: `-tag`, `tag*`, `~tag` fuzzy, `( a ~ b )` OR, `score:>=10`, `sort:score:desc`, `sort:random` | Always safe; 1000 results/page API limit |
-| **Konachan** | `tag1 tag2`, `-tag`, `tag*`, `~tag`, `score:`, `order:score`, `order:random` | Max 6 tags per search; ratings `s`/`q`/`e` |
-| **Yande.re** | Same as Konachan | Max 6 tags; `order:random` can occasionally return few results |
-| **Zerochan** | Spaces belong to the tag: `Zenless Zone Zero`; commas separate tags: `Zenless Zone Zero, landscape`; `s=id` recent, `s=fav` popular, `s=random` | No wildcard or exclusion syntax; guest pages hide some images behind a member login |
-
-The sort dropdown maps to the best available server-side order for each source;
-“Best match” uses Danbooru’s relevance order and otherwise leaves the source’s
-natural order.
-
-
-## Safety
-
-Safe search is enabled on first launch:
-
-- Danbooru, Konachan and Yande.re queries are filtered to safe ratings.
-- Safebooru and Zerochan are always safe.
-- Turning safe search off requires an explicit confirmation.
-- Sensitive thumbnails are replaced with a “Sensitive” cover by default; this
-  can be changed in Preferences → Content.
-
-No filter is perfect. Use the app responsibly and follow each source's terms.
-
-## Where things live
+## Configs
 
 | Item | Location |
 |---|---|
 | Settings | `~/.config/mizuki/settings.json` |
 | Favourites | `~/.config/mizuki/favorites.json` |
-| Image cache | `~/.cache/mizuki/thumbnails` |
+| Thumbnail cache | `~/.cache/mizuki/thumbnails` |
 | Default downloads | `~/Pictures/Mizuki` |
 | Custom sources | `~/.local/share/mizuki/sources/*.py` |
 
@@ -259,8 +171,7 @@ src/mizuki/
 └── ui/
     ├── window.py           # Main window, sidebar, navigation
     ├── discover.py         # Search panel, filters, suggestions
-    ├── grid.py             # Justified responsive artwork gallery
-    ├── gallery_layout.py   # Aspect-ratio row packing maths
+    ├── grid.py             # Responsive FlowBox grid
     ├── card.py             # Artwork tile
     ├── detail.py           # Full artwork dialog
     ├── pages.py            # Favourites and Downloads pages
