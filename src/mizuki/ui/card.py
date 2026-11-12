@@ -117,7 +117,7 @@ class ImageCard(Gtk.Box):
         self._info.set_child(self._build_info_bar())
         overlay.add_overlay(self._info)
 
-        self.set_child(overlay)
+        self.append(overlay)
 
         motion = Gtk.EventControllerMotion()
         motion.connect("enter", self._on_pointer_enter)

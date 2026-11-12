@@ -305,6 +305,15 @@ To check the network adapters without GTK:
 ./run.sh --source-check
 ```
 
+For a scripted visual walkthrough (main grid, detail dialog, preferences,
+favourites, downloads, source switch, tag search, and a real download), run:
+
+```bash
+./run.sh --demo
+```
+
+Screenshots are written to `~/.cache/mizuki/gui-check/demo/`.
+
 Application logs are always written to `~/.cache/mizuki/mizuki.log`.
 
 ## Legal

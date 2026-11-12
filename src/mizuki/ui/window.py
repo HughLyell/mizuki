@@ -178,6 +178,7 @@ class MizukiWindow(Adw.ApplicationWindow):
 
     def _build_sidebar(self) -> Gtk.Widget:
         sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        sidebar.add_css_class("sidebar")
         sidebar.add_css_class("sidebar-pane")
         sidebar.set_size_request(272, -1)
 
@@ -196,6 +197,7 @@ class MizukiWindow(Adw.ApplicationWindow):
         self.nav_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.nav_list.connect("row-activated", self._on_nav_activated)
         self._nav_rows: dict[str, Adw.ActionRow] = {}
+        self._nav_wrappers: dict[str, Gtk.ListBoxRow] = {}
         self._nav_rows["discover"] = self._make_nav_row(
             "discover", "Discover", "system-search-symbolic"
         )
@@ -207,8 +209,12 @@ class MizukiWindow(Adw.ApplicationWindow):
         )
         self._nav_rows["downloads"] = downloads_row
         self._download_badge = badge
-        for row in self._nav_rows.values():
+        for index, (page_id, row) in enumerate(self._nav_rows.items()):
             self.nav_list.append(row)
+            wrapper = self.nav_list.get_row_at_index(index)
+            if isinstance(wrapper, Gtk.ListBoxRow):
+                wrapper._mizuki_page = page_id  # type: ignore[attr-defined]
+                self._nav_wrappers[page_id] = wrapper
         inner.append(self.nav_list)
 
         inner.append(self._heading("SOURCES"))
@@ -329,6 +335,7 @@ class MizukiWindow(Adw.ApplicationWindow):
         image = Gtk.Image.new_from_icon_name(icon)
         image.set_pixel_size(17)
         action.add_prefix(image)
+        action._mizuki_page = page_id  # type: ignore[attr-defined]
         badge = None
         if with_badge:
             badge = Gtk.Label(label="")
@@ -336,13 +343,18 @@ class MizukiWindow(Adw.ApplicationWindow):
             badge.set_valign(Gtk.Align.CENTER)
             badge.set_visible(False)
             action.add_suffix(badge)
-        wrapper = Gtk.ListBoxRow()
-        wrapper.set_child(action)
-        wrapper._mizuki_page = page_id  # type: ignore[attr-defined]
-        return (wrapper, badge) if with_badge else wrapper
+        return (action, badge) if with_badge else action
+
+    @staticmethod
+    def _row_marker(row, attribute: str):
+        marker = getattr(row, attribute, None)
+        if marker is not None:
+            return marker
+        child = row.get_child() if isinstance(row, Gtk.ListBoxRow) else None
+        return getattr(child, attribute, None) if child is not None else None
 
     def _on_nav_activated(self, _listbox, row) -> None:
-        page_id = getattr(row, "_mizuki_page", None)
+        page_id = self._row_marker(row, "_mizuki_page")
         if page_id:
             self.switch_page(page_id)
 
@@ -358,13 +370,15 @@ class MizukiWindow(Adw.ApplicationWindow):
         image = Gtk.Image.new_from_icon_name("system-search-symbolic")
         image.set_pixel_size(17)
         all_row.add_prefix(image)
-        all_wrapper = Gtk.ListBoxRow()
-        all_wrapper.set_child(all_row)
-        all_wrapper._mizuki_source = "all"  # type: ignore[attr-defined]
-        self.source_list.append(all_wrapper)
-        self._source_rows["all"] = all_wrapper
+        all_row._mizuki_source = "all"  # type: ignore[attr-defined]
+        self.source_list.append(all_row)
+        all_wrapper = self.source_list.get_row_at_index(0)
+        if isinstance(all_wrapper, Gtk.ListBoxRow):
+            all_wrapper._mizuki_source = "all"  # type: ignore[attr-defined]
+            self._source_rows["all"] = all_wrapper
 
         enabled = set(self.settings.get("enabled_sources", []))
+        index = 1
         for source in self.registry.all():
             if source.id not in enabled:
                 continue
@@ -373,15 +387,17 @@ class MizukiWindow(Adw.ApplicationWindow):
             icon = Gtk.Image.new_from_icon_name(source.icon)
             icon.set_pixel_size(17)
             row.add_prefix(icon)
-            wrapper = Gtk.ListBoxRow()
-            wrapper.set_child(row)
-            wrapper._mizuki_source = source.id  # type: ignore[attr-defined]
-            self.source_list.append(wrapper)
-            self._source_rows[source.id] = wrapper
+            row._mizuki_source = source.id  # type: ignore[attr-defined]
+            self.source_list.append(row)
+            wrapper = self.source_list.get_row_at_index(index)
+            index += 1
+            if isinstance(wrapper, Gtk.ListBoxRow):
+                wrapper._mizuki_source = source.id  # type: ignore[attr-defined]
+                self._source_rows[source.id] = wrapper
         self._sync_source_selection(self.discover.current_source_id() if hasattr(self, "discover") else "all")
 
     def _on_source_row_activated(self, _listbox, row) -> None:
-        source_id = getattr(row, "_mizuki_source", None)
+        source_id = self._row_marker(row, "_mizuki_source")
         if source_id:
             self._on_source_selected(source_id, run=True)
 
@@ -389,6 +405,10 @@ class MizukiWindow(Adw.ApplicationWindow):
         row = self._source_rows.get(source_id)
         if row is not None:
             self.source_list.select_row(row)
+            log.debug(
+                "Selected source %s (row=%r, selected=%r)",
+                source_id, row, self.source_list.get_selected_row(),
+            )
 
     def _update_sidebar_tags(self, source_id: str) -> None:
         child = self.sidebar_tags.get_first_child()
@@ -418,9 +438,13 @@ class MizukiWindow(Adw.ApplicationWindow):
             return
         self._current_page = page_id
         self.page_stack.set_visible_child_name(page_id)
-        row = self._nav_rows.get(page_id)
+        row = self._nav_wrappers.get(page_id)
         if row is not None:
             self.nav_list.select_row(row)
+            log.debug(
+                "Selected nav page %s (row=%r, selected=%r)",
+                page_id, row, self.nav_list.get_selected_row(),
+            )
         if page_id == "discover":
             self._sync_source_selection(self.discover.current_source_id())
         else:

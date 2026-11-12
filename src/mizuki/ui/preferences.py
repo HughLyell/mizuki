@@ -33,12 +33,22 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.on_request_safe = on_request_safe
         self.on_notice = on_notice
         self._syncing = False
+        self.pages: dict[str, Adw.PreferencesPage] = {}
 
-        self.add(self._build_appearance_page())
-        self.add(self._build_content_page())
-        self.add(self._build_sources_page())
-        self.add(self._build_downloads_page())
+        self.pages["appearance"] = self._build_appearance_page()
+        self.add(self.pages["appearance"])
+        self.pages["content"] = self._build_content_page()
+        self.add(self.pages["content"])
+        self.pages["sources"] = self._build_sources_page()
+        self.add(self.pages["sources"])
+        self.pages["downloads"] = self._build_downloads_page()
+        self.add(self.pages["downloads"])
         self.set_search_enabled(True)
+
+    def show_page(self, name: str) -> None:
+        page = self.pages.get(name)
+        if page is not None:
+            self.set_visible_page(page)
 
     # -- pages -----------------------------------------------------------
     def _build_appearance_page(self) -> Adw.PreferencesPage:

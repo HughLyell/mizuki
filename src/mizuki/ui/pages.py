@@ -137,7 +137,7 @@ class DownloadsPage(Gtk.Box):
         title = Gtk.Label(label="Downloads")
         title.add_css_class("page-heading")
         title.set_xalign(0)
-        self.subtitle = Gtk.Label(label="Your saved artwork")
+        self.subtitle = Gtk.Label(label="Your download queue")
         self.subtitle.add_css_class("page-subheading")
         self.subtitle.set_xalign(0)
         titles.append(title)
@@ -344,7 +344,7 @@ class DownloadsPage(Gtk.Box):
         elif done:
             self.subtitle.set_text(f"{done} downloaded")
         else:
-            self.subtitle.set_text("Your saved artwork")
+            self.subtitle.set_text("Your download queue")
         self.clear_button.set_sensitive(any(not task.active for task in self.manager.tasks))
 
     # -- actions ---------------------------------------------------------

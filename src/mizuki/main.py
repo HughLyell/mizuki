@@ -6,6 +6,7 @@ import logging
 import logging.handlers
 import os
 import sys
+import time
 
 from . import APP_NAME, __version__
 from . import config
@@ -63,6 +64,7 @@ def _source_check() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv if argv is None else argv)
+    os.environ.setdefault("MIZUKI_PROCESS_START", str(time.perf_counter()))
     smoke_test = "--smoke-test" in argv[1:]
     if smoke_test:
         argv = [argument for argument in argv if argument != "--smoke-test"]
@@ -70,6 +72,10 @@ def main(argv: list[str] | None = None) -> int:
     source_check = "--source-check" in argv[1:]
     if source_check:
         argv = [argument for argument in argv if argument != "--source-check"]
+    demo = "--demo" in argv[1:]
+    if demo:
+        argv = [argument for argument in argv if argument != "--demo"]
+        os.environ["MIZUKI_DEMO"] = "1"
     if any(arg in ("--version", "-v") for arg in argv[1:]):
         print(f"{APP_NAME} {__version__}")
         return 0
