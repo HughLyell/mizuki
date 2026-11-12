@@ -140,10 +140,10 @@ Mizuki is deliberately small and native:
 - Source modules are imported lazily when the registry is created.
 - Network search, tag autocomplete and downloads run on worker threads, so the
   GTK main loop never waits on the network.
-- Thumbnails use an LRU texture cache capped at 240 textures, plus a 400 MB
-  on-disk cache under `~/.cache/mizuki/thumbnails`.
-- Only one full-size preview is decoded at a time; the detail dialog releases
-  it when closed.
+- Thumbnails and opened previews share an LRU texture cache capped at 240
+  textures, plus a 400 MB on-disk cache under `~/.cache/mizuki/thumbnails`.
+- The detail dialog paints the already-loaded thumbnail immediately, then
+  replaces it with a larger preview fetched in the background.
 - **Target:** window visible quickly and memory below 300 MB. Measured on
   Fedora 43 with GTK 4.24 / Python 3.15: about **0.6–0.8 s cold start** and
   **~157 MB RSS** with 120 thumbnails loaded. PyGObject + GTK import alone is
@@ -231,7 +231,7 @@ No filter is perfect. Use the app responsibly and follow each source's terms.
 |---|---|
 | Settings | `~/.config/mizuki/settings.json` |
 | Favourites | `~/.config/mizuki/favorites.json` |
-| Thumbnail cache | `~/.cache/mizuki/thumbnails` |
+| Image cache | `~/.cache/mizuki/thumbnails` |
 | Default downloads | `~/Pictures/Mizuki` |
 | Custom sources | `~/.local/share/mizuki/sources/*.py` |
 

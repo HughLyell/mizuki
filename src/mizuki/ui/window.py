@@ -653,6 +653,12 @@ class MizukiWindow(Adw.ApplicationWindow):
         return False
 
     def _open_post(self, post: Post) -> None:
+        if post.preview_url:
+            self.loader.prefetch(
+                post.preview_url,
+                referer=post.referer,
+                store_disk=True,
+            )
         dialog = ImageDetailDialog(
             post,
             self.loader,
