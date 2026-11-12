@@ -147,6 +147,10 @@ class ZerochanTests(unittest.TestCase):
         self.assertEqual(data["Shylily"]["total"], 125)
         self.assertEqual(data["Shylily"]["thumbnails"], ["4735525", "4648695"])
 
+    def test_typo_candidates_collapse_duplicate_letters(self) -> None:
+        self.assertIn("Shylily", ZerochanSource._typo_candidates("Shylilly"))
+        self.assertEqual(ZerochanSource._typo_candidates("landscape"), [])
+
 
 class MergeTests(unittest.TestCase):
     @staticmethod
@@ -172,6 +176,12 @@ class MergeTests(unittest.TestCase):
         a = SourcePage([self.post("a", str(i)) for i in range(5)], has_more=True)
         posts, _ = merge_pages([a], limit=3)
         self.assertEqual(len(posts), 3)
+
+    def test_empty_source_does_not_hide_other_results(self) -> None:
+        populated = SourcePage([self.post("a", "1")], has_more=False)
+        empty = SourcePage([], has_more=False)
+        posts, _ = merge_pages([empty, populated, empty], limit=10)
+        self.assertEqual([post.key for post in posts], ["a:1"])
 
 
 if __name__ == "__main__":

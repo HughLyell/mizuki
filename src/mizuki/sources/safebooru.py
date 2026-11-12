@@ -7,6 +7,8 @@ instead. It is safe-for-work only.
 
 from __future__ import annotations
 
+import json
+
 from .. import net
 from ..models import IMAGE_EXTENSIONS, Post, SearchQuery, SourcePage, extension_from_url, normalize_rating
 from .base import Source, SourceError
@@ -57,9 +59,16 @@ class SafebooruSource(Source):
         if tags:
             params["tags"] = " ".join(tags)
         try:
-            payload = net.get_json(self.api_url, params=params, headers=self.headers())
+            raw_text = net.get_text(self.api_url, params=params, headers=self.headers())
         except net.NetworkError as exc:
             raise SourceError(str(exc)) from exc
+        if not raw_text.strip():
+            return SourcePage(posts=[], has_more=False)
+        try:
+            payload = json.loads(raw_text)
+        except json.JSONDecodeError as exc:
+            preview = " ".join(raw_text[:120].split())
+            raise SourceError(f"Safebooru returned an unexpected response ({preview!r})") from exc
         if isinstance(payload, dict):
             payload = payload.get("post") or []
         if not isinstance(payload, list):

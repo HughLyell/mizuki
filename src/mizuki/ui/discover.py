@@ -481,7 +481,12 @@ class DiscoverPage(Gtk.Box):
             self._stack.set_visible_child_name("empty")
             return
         if errors and not total:
-            self._show_error(errors[0])
+            self.empty_title.set_text("No artwork found")
+            self.empty_description.set_text(
+                "No results were returned by the sources that responded. "
+                "Some sources could not be reached."
+            )
+            self._stack.set_visible_child_name("empty")
             return
         if self._loading:
             self._stack.set_visible_child_name("loading")

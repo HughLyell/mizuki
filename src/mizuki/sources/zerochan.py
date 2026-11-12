@@ -184,11 +184,51 @@ class ZerochanSource(Source):
         tags = [tag for tag in query.tags if not tag.startswith("-")][:3]
         if not tags:
             return "/"
-        encoded = ",".join(
-            urllib.parse.quote(tag.replace("_", " ").replace(" ", "+"), safe="+()_.-")
-            for tag in tags
+        return "/" + ",".join(self._encode_tag_path(tag).lstrip("/") for tag in tags)
+
+    @staticmethod
+    def _encode_tag_path(tag: str) -> str:
+        return "/" + urllib.parse.quote(
+            tag.replace("_", " ").replace(" ", "+"),
+            safe="+()_.-",
         )
-        return "/" + encoded
+
+    @staticmethod
+    def _typo_candidates(tag: str) -> list[str]:
+        """Generate conservative single-letter-collapse candidates."""
+        candidates: list[str] = []
+        seen = {tag.strip().lower()}
+        for index in range(1, len(tag)):
+            if tag[index].lower() != tag[index - 1].lower():
+                continue
+            candidate = tag[:index] + tag[index + 1:]
+            key = candidate.strip().lower()
+            if key and key not in seen:
+                seen.add(key)
+                candidates.append(candidate)
+        return candidates[:5]
+
+    def _find_correction(self, tag: str) -> tuple[str, str] | None:
+        for candidate in self._typo_candidates(tag):
+            try:
+                html = net.get_text(
+                    BASE_URL + self._encode_tag_path(candidate),
+                    headers=self.headers(),
+                    timeout=15,
+                )
+            except net.NetworkError:
+                continue
+            if "Just a moment" in html and "cloudflare" in html.lower():
+                continue
+            parser = _GalleryParser()
+            try:
+                parser.feed(html)
+            except Exception:
+                continue
+            if parser.items:
+                log.info("Zerochan correction: %s -> %s", tag, candidate)
+                return html, candidate
+        return None
 
     def search_url(self, query: SearchQuery) -> str:
         path = self.search_path(query)
@@ -202,10 +242,35 @@ class ZerochanSource(Source):
         return f"{BASE_URL}{path}"
 
     def search(self, query: SearchQuery) -> SourcePage:
+        tags = [tag for tag in query.tags if not tag.startswith("-")]
+        corrected_from = ""
+        corrected_tag = ""
         try:
             html = net.get_text(self.search_url(query), headers=self.headers(), timeout=25)
         except net.NetworkError as exc:
-            raise SourceError(str(exc)) from exc
+            if exc.status != 404:
+                raise SourceError(str(exc)) from exc
+            if query.page > 1:
+                return SourcePage(posts=[], has_more=False)
+            if len(tags) == 1:
+                correction = self._find_correction(tags[0])
+                if correction:
+                    html, corrected_tag = correction
+                    corrected_from = tags[0]
+                else:
+                    return SourcePage(
+                        posts=[],
+                        has_more=False,
+                        notice=f"Zerochan has no tag matching '{tags[0]}'.",
+                    )
+            elif tags:
+                return SourcePage(
+                    posts=[],
+                    has_more=False,
+                    notice="Zerochan has no tag matching this search.",
+                )
+            else:
+                raise SourceError(str(exc)) from exc
         if "Just a moment" in html and "cloudflare" in html.lower():
             raise SourceError("Zerochan is currently blocking automated requests. Try again later.")
         parser = _GalleryParser()
@@ -222,9 +287,14 @@ class ZerochanSource(Source):
         has_more = bool(posts)
         notice = ""
         member_only = "members only" in html.lower()
-        tags = [tag for tag in query.tags if not tag.startswith("-")]
-        if member_only and query.page == 1 and len(tags) == 1 and 0 < len(posts) <= 12:
-            extra, notice = self._supplement(tags[0], posts)
+        supplement_tag = corrected_tag or (tags[0] if len(tags) == 1 else "")
+        if (
+            member_only
+            and query.page == 1
+            and supplement_tag
+            and 0 < len(posts) <= 12
+        ):
+            extra, notice = self._supplement(supplement_tag, posts)
             has_more = False
             if extra:
                 merged = {post.id: post for post in posts}
@@ -235,13 +305,24 @@ class ZerochanSource(Source):
                     key=lambda post: int(post.id) if post.id.isdigit() else 0,
                     reverse=True,
                 )
+        if member_only and not posts and not notice:
+            notice = "Zerochan hides this tag behind a member login."
+        notice_parts: list[str] = []
+        if corrected_from:
+            notice_parts.append(
+                f"No Zerochan tag '{corrected_from}'; showing results for '{corrected_tag}'."
+            )
         if notice:
+            notice_parts.append(notice)
+        if notice_parts:
             limit = max(query.limit, 100)
         else:
             limit = query.limit
-        if member_only and not posts and not notice:
-            notice = "Zerochan hides this tag behind a member login."
-        return SourcePage(posts=posts[:limit], has_more=has_more, notice=notice)
+        return SourcePage(
+            posts=posts[:limit],
+            has_more=has_more,
+            notice=" ".join(notice_parts),
+        )
 
     def _supplement(self, tag: str, public_posts: list[Post]) -> tuple[list[Post], str]:
         """Collect related/recent images that Zerochan shows outside the grid.

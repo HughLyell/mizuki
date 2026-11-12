@@ -25,6 +25,9 @@ browser.
 - **Source filtering** — browse one source or merge results from every enabled
   source. Sources can be toggled in Preferences. Selecting a source in the
   sidebar immediately searches that source.
+- **Resilient searches** — if one source fails or returns nothing, results from
+  the other sources are still shown. Zerochan also corrects common doubled-letter
+  tag typos (for example `Shylilly` → `Shylily`) when the original tag 404s.
 - **SFW controls** — safe search is on by default, filters at the source, and
   requires confirmation before it can be disabled. Sources without a safe
   subset stay filtered. Sensitive thumbnails are covered by default.
