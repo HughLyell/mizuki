@@ -46,6 +46,7 @@ class MizukiWindow(Adw.ApplicationWindow):
         self._changing_source = False
         self._preferences: PreferencesDialog | None = None
         self._dialogs: set[ImageDetailDialog] = set()
+        self._settings_subscriptions: list[tuple[str, object]] = []
 
         self.set_title(APP_NAME)
         self.set_default_size(1280, 840)
@@ -77,10 +78,18 @@ class MizukiWindow(Adw.ApplicationWindow):
         self.settings.subscribe("accent", self._on_accent_changed)
         self.settings.subscribe("color_scheme", self._on_scheme_changed)
         self.settings.subscribe("enabled_sources", self._on_sources_changed)
+        self._settings_subscriptions = [
+            ("safe_search", self._on_safe_setting_changed),
+            ("blur_nsfw", self._on_blur_changed),
+            ("grid_size", self._on_grid_changed),
+            ("accent", self._on_accent_changed),
+            ("color_scheme", self._on_scheme_changed),
+            ("enabled_sources", self._on_sources_changed),
+        ]
 
         self.downloads.add_listener(self._on_download_event)
         style_manager = Adw.StyleManager.get_default()
-        style_manager.connect("notify::dark", self._on_dark_changed)
+        self._dark_handler = style_manager.connect("notify::dark", self._on_dark_changed)
 
         self.switch_page("discover", refresh=False)
         self._update_download_badge()
@@ -687,6 +696,24 @@ class MizukiWindow(Adw.ApplicationWindow):
     def _on_close_request(self, *_args) -> bool:
         if getattr(self.app, "window", None) is self:
             self.app.window = None
+        for key, callback in self._settings_subscriptions:
+            self.settings.unsubscribe(key, callback)
+        self._settings_subscriptions.clear()
+        self.downloads.remove_listener(self._on_download_event)
+        try:
+            self.downloads_page.shutdown()
+        except Exception:
+            pass
+        try:
+            Adw.StyleManager.get_default().disconnect(self._dark_handler)
+        except Exception:
+            pass
+        if self._preferences is not None:
+            try:
+                self._preferences.close()
+            except Exception:
+                pass
+            self._preferences = None
         for dialog in list(self._dialogs):
             try:
                 dialog.close()

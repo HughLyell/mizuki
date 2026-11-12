@@ -62,7 +62,12 @@ class DownloadManager:
         self._reserved_paths: set[str] = set()
 
     def add_listener(self, listener: DownloadListener) -> None:
-        self._listeners.append(listener)
+        if listener not in self._listeners:
+            self._listeners.append(listener)
+
+    def remove_listener(self, listener: DownloadListener) -> None:
+        if listener in self._listeners:
+            self._listeners.remove(listener)
 
     @property
     def tasks(self) -> list[DownloadTask]:

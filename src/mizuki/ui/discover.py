@@ -210,6 +210,26 @@ class DiscoverPage(Gtk.Box):
         self.empty_description.set_justify(Gtk.Justification.CENTER)
         self.empty_description.set_wrap(True)
         box.append(self.empty_description)
+
+        self.recent_title = Gtk.Label(label="RECENT SEARCHES")
+        self.recent_title.add_css_class("detail-section-title")
+        self.recent_title.set_margin_top(6)
+        self.recent_title.set_visible(False)
+        box.append(self.recent_title)
+        self.recent_chips = Gtk.FlowBox()
+        self.recent_chips.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.recent_chips.set_min_children_per_line(1)
+        self.recent_chips.set_max_children_per_line(6)
+        self.recent_chips.set_row_spacing(6)
+        self.recent_chips.set_column_spacing(6)
+        self.recent_chips.set_halign(Gtk.Align.CENTER)
+        self.recent_chips.set_visible(False)
+        box.append(self.recent_chips)
+
+        popular_title = Gtk.Label(label="POPULAR TAGS")
+        popular_title.add_css_class("detail-section-title")
+        popular_title.set_margin_top(6)
+        box.append(popular_title)
         self.empty_chips = Gtk.FlowBox()
         self.empty_chips.set_selection_mode(Gtk.SelectionMode.NONE)
         self.empty_chips.set_min_children_per_line(1)
@@ -323,6 +343,7 @@ class DiscoverPage(Gtk.Box):
             self._query = self._query.with_page(self._page)
         if record and text:
             self.settings.add_recent_search(text)
+            self._update_empty_suggestions()
         sources = self._selected_sources()
         self._build_query_chips()
         self._loading = True
@@ -433,6 +454,8 @@ class DiscoverPage(Gtk.Box):
 
     def _deliver_suggestions(self, generation: int, names: list[str]):
         if generation != self._suggest_generation:
+            return False
+        if not self.search_entry.has_focus():
             return False
         child = self.suggest_list.get_first_child()
         while child is not None:
@@ -603,10 +626,21 @@ class DiscoverPage(Gtk.Box):
 
     # -- empty state suggestions -----------------------------------------
     def _update_empty_suggestions(self) -> None:
-        child = self.empty_chips.get_first_child()
-        while child is not None:
-            self.empty_chips.remove(child)
-            child = self.empty_chips.get_first_child()
+        for flow in (self.empty_chips, self.recent_chips):
+            child = flow.get_first_child()
+            while child is not None:
+                flow.remove(child)
+                child = flow.get_first_child()
+
+        recent = [item for item in self.settings.get("recent_searches", []) if item][:6]
+        for term in recent:
+            chip = Gtk.Button(label=term)
+            chip.add_css_class("query-chip")
+            chip.connect("clicked", lambda _b, value=term: self.search_tag(value))
+            self.recent_chips.append(chip)
+        self.recent_chips.set_visible(bool(recent))
+        self.recent_title.set_visible(bool(recent))
+
         source = self.registry.get(self._source_id) if self._source_id != "all" else None
         tags = list(source.popular_tags) if source and source.popular_tags else [
             "landscape",

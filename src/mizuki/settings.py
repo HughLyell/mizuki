@@ -122,6 +122,11 @@ class Settings:
         if callback not in self._listeners[key]:
             self._listeners[key].append(callback)
 
+    def unsubscribe(self, key: str, callback: Listener) -> None:
+        listeners = self._listeners.get(key)
+        if listeners and callback in listeners:
+            listeners.remove(callback)
+
     def _notify(self, key: str, value: Any) -> None:
         for callback in tuple(self._listeners.get(key, ())):
             try:

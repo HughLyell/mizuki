@@ -204,6 +204,9 @@ class DownloadsPage(Gtk.Box):
         self.refresh()
 
     # -- public ----------------------------------------------------------
+    def shutdown(self) -> None:
+        self.manager.remove_listener(self._on_manager_event)
+
     def refresh(self) -> None:
         for task_id in list(self._rows):
             row = self._rows[task_id][0]

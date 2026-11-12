@@ -261,8 +261,6 @@ class ImageCard(Gtk.Box):
 
     # -- callbacks -------------------------------------------------------
     def _on_texture(self, texture) -> None:
-        if self.get_root() is None:
-            return
         self.spinner.stop()
         self.spinner.set_visible(False)
         if texture is not None:
