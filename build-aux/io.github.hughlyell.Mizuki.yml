@@ -1,0 +1,21 @@
+app-id: io.github.hughlyell.Mizuki
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: mizuki
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --filesystem=xdg-pictures:rw
+  - --filesystem=xdg-download:rw
+
+modules:
+  - name: mizuki
+    buildsystem: meson
+    sources:
+      - type: dir
+        path: ..

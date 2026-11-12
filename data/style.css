@@ -1,0 +1,392 @@
+/* Mizuki — Material You inspired Adwaita styling */
+
+/* ---------------------------------------------------------------- window */
+window.mizuki-window {
+  background-color: @window_bg_color;
+}
+
+headerbar.mizuki-header {
+  background-color: transparent;
+  box-shadow: none;
+  border-bottom: 1px solid alpha(@borders, 0.55);
+  min-height: 54px;
+}
+
+.brand-box {
+  padding: 0 4px;
+}
+
+.brand-title {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+}
+
+.brand-subtitle {
+  font-size: 10.5px;
+  opacity: 0.6;
+}
+
+/* --------------------------------------------------------------- sidebar */
+.sidebar-pane {
+  background-color: alpha(@accent_bg_color, 0.045);
+  border-right: 1px solid alpha(@borders, 0.55);
+}
+
+.sidebar-scroll {
+  background-color: transparent;
+}
+
+.sidebar-heading {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 1.3px;
+  opacity: 0.45;
+  margin: 16px 12px 5px 12px;
+}
+
+.sidebar list.navigation-sidebar {
+  background-color: transparent;
+}
+
+.sidebar list.navigation-sidebar row {
+  margin: 1px 8px;
+  border-radius: 11px;
+  padding: 3px 4px;
+}
+
+.sidebar list.navigation-sidebar row:selected {
+  background-color: alpha(@accent_bg_color, 0.14);
+  color: @accent_color;
+}
+
+.sidebar list.navigation-sidebar row:hover:not(:selected) {
+  background-color: alpha(@window_fg_color, 0.055);
+}
+
+.sidebar source-row image,
+.sidebar list.navigation-sidebar row image {
+  opacity: 0.8;
+}
+
+.sidebar-footer {
+  border-top: 1px solid alpha(@borders, 0.55);
+  padding: 10px 12px 12px 12px;
+}
+
+.safe-title {
+  font-weight: 650;
+  font-size: 13px;
+}
+
+.safe-caption {
+  font-size: 10.5px;
+  opacity: 0.55;
+}
+
+.pill-button {
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.badge-count {
+  background-color: @accent_bg_color;
+  color: @accent_fg_color;
+  border-radius: 999px;
+  padding: 0 7px;
+  min-height: 18px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.tag-pill {
+  border-radius: 999px;
+  padding: 3px 10px;
+  min-height: 26px;
+  font-size: 11px;
+  background-color: alpha(@window_fg_color, 0.06);
+}
+
+.tag-pill:hover {
+  background-color: alpha(@accent_bg_color, 0.16);
+}
+
+/* ---------------------------------------------------------------- search */
+.search-entry {
+  min-height: 46px;
+  border-radius: 23px;
+  padding: 0 18px;
+  font-size: 15px;
+  background-color: alpha(@window_fg_color, 0.055);
+  border: 1px solid alpha(@borders, 0.9);
+}
+
+.search-entry:focus {
+  border-color: @accent_bg_color;
+}
+
+.search-button {
+  border-radius: 999px;
+  min-height: 46px;
+  padding: 0 22px;
+  font-weight: 700;
+}
+
+.filter-drop {
+  border-radius: 999px;
+  min-height: 34px;
+  background-color: alpha(@window_fg_color, 0.05);
+}
+
+.sfw-pill {
+  border-radius: 999px;
+  min-height: 34px;
+  padding: 0 14px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.sfw-pill.on {
+  background-color: alpha(@accent_bg_color, 0.14);
+  color: @accent_color;
+}
+
+.sfw-pill.off {
+  background-color: alpha(@destructive_bg_color, 0.16);
+  color: @destructive_color;
+}
+
+.count-label {
+  font-size: 11.5px;
+  opacity: 0.55;
+}
+
+.query-chip {
+  border-radius: 999px;
+  padding: 2px 10px;
+  min-height: 28px;
+  font-size: 11.5px;
+  background-color: alpha(@accent_bg_color, 0.13);
+  color: @accent_color;
+}
+
+.query-chip:hover {
+  background-color: alpha(@accent_bg_color, 0.24);
+}
+
+/* --------------------------------------------------------------- artwork */
+.content-area {
+  background-color: transparent;
+}
+
+.image-grid > flowboxchild {
+  padding: 0;
+  background-color: transparent;
+  border-radius: 16px;
+}
+
+.image-card {
+  background-color: alpha(@window_fg_color, 0.055);
+  border: 1px solid alpha(@borders, 0.55);
+  border-radius: 16px;
+}
+
+.image-card:hover {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+}
+
+.image-card:focus {
+  border-color: @accent_bg_color;
+}
+
+.card-picture {
+  border-radius: 15px;
+  background-color: alpha(@window_fg_color, 0.04);
+}
+
+.card-viewport {
+  border-radius: 15px;
+  background-color: transparent;
+  border: none;
+}
+
+.card-stack {
+  background-color: transparent;
+}
+
+.thumb-placeholder {
+  border-radius: 15px;
+  background-image: linear-gradient(135deg,
+      alpha(@accent_bg_color, 0.24),
+      alpha(@accent_bg_color, 0.06) 55%,
+      alpha(@window_fg_color, 0.03));
+}
+
+.thumb-placeholder-icon {
+  opacity: 0.35;
+}
+
+.card-overlay {
+  padding: 12px 10px 9px 11px;
+  background-image: linear-gradient(to bottom,
+      transparent,
+      rgba(0, 0, 0, 0.35) 40%,
+      rgba(0, 0, 0, 0.82));
+  border-radius: 0 0 15px 15px;
+}
+
+.card-source {
+  color: #ffffff;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.card-meta {
+  color: #ffffff;
+  font-size: 10.5px;
+  opacity: 0.65;
+}
+
+.card-action {
+  background-color: alpha(#000000, 0.35);
+  border-radius: 999px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  color: #ffffff;
+}
+
+.card-action:hover {
+  background-color: alpha(#ffffff, 0.24);
+}
+
+.card-action image {
+  color: #ffffff;
+}
+
+.rating-badge {
+  background-color: alpha(#000000, 0.66);
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.rating-badge.nsfw {
+  background-color: alpha(@destructive_bg_color, 0.92);
+}
+
+.sensitive-cover {
+  background-color: alpha(#000000, 0.76);
+  border-radius: 15px;
+}
+
+.sensitive-cover label {
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.footer-label {
+  font-size: 11.5px;
+  opacity: 0.55;
+}
+
+/* ---------------------------------------------------------------- detail */
+.image-stage {
+  background-color: alpha(#000000, 0.9);
+}
+
+.detail-panel {
+  background-color: @window_bg_color;
+  border-left: 1px solid alpha(@borders, 0.55);
+}
+
+.detail-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+}
+
+.detail-subtitle {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.detail-section-title {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.1px;
+  opacity: 0.48;
+}
+
+.tag-chip {
+  border-radius: 999px;
+  padding: 3px 11px;
+  min-height: 26px;
+  font-size: 11.5px;
+  background-color: alpha(@accent_bg_color, 0.12);
+  color: @accent_color;
+}
+
+.tag-chip:hover {
+  background-color: alpha(@accent_bg_color, 0.22);
+}
+
+.meta-key {
+  font-size: 10.5px;
+  opacity: 0.5;
+}
+
+.meta-value {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------- downloads */
+.download-row {
+  border-radius: 12px;
+}
+
+.download-progress trough {
+  min-height: 4px;
+  border-radius: 999px;
+}
+
+.download-progress progress {
+  min-height: 4px;
+  border-radius: 999px;
+}
+
+/* ---------------------------------------------------------------- status */
+.big-title {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+}
+
+.dim-label {
+  opacity: 0.55;
+}
+
+.page-heading {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.7px;
+}
+
+.page-subheading {
+  font-size: 12px;
+  opacity: 0.55;
+}
+
+preferences-page {
+  background-color: @window_bg_color;
+}

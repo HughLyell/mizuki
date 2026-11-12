@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.hughlyell.Mizuki</id>
+
+  <name>Mizuki</name>
+  <summary>Browse and download anime artwork</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <description>
+    <p>
+      Mizuki is a fast, native anime image browser for the Linux desktop. Search
+      multiple booru sources, filter by tags and rating, preview artwork, and
+      download your favourites in one click.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Modular sources including Danbooru, Safebooru, Konachan, Yande.re and Zerochan</li>
+      <li>Tag search with suggestions, source filters and SFW controls</li>
+      <li>Responsive artwork grid with a Material You-inspired accent palette</li>
+      <li>Background downloads with a live progress queue</li>
+      <li>Favourites and custom sources loaded from a plugin folder</li>
+    </ul>
+    <p>
+      Mizuki is not affiliated with any of the image boards it connects to.
+      Artwork belongs to the original artists.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">io.github.hughlyell.Mizuki.desktop</launchable>
+  <provides>
+    <binary>mizuki</binary>
+  </provides>
+
+  <url type="homepage">https://github.com/HughLyell/mizuki</url>
+  <url type="bugtracker">https://github.com/HughLyell/mizuki/issues</url>
+  <url type="vcs-browser">https://github.com/HughLyell/mizuki</url>
+
+  <developer id="io.github.hughlyell">
+    <name>Hugh Lyell</name>
+  </developer>
+
+  <categories>
+    <category>Graphics</category>
+    <category>Viewer</category>
+  </categories>
+
+  <content_rating type="oars-1.1">
+    <content_attribute id="sex-nudity">intense</content_attribute>
+  </content_rating>
+
+  <releases>
+    <release version="0.1.0" date="2026-11-12">
+      <description>
+        <p>Initial release with five modular sources, tag search, favourites and downloads.</p>
+      </description>
+    </release>
+  </releases>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#6d3ed1</color>
+    <color type="primary" scheme_preference="dark">#8b5cf6</color>
+  </branding>
+</component>

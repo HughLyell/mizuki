@@ -1,0 +1,4 @@
+#!/bin/sh
+export PYTHONPATH="@pkgdatadir@${PYTHONPATH:+:$PYTHONPATH}"
+export MIZUKI_DATA_DIR="@pkgdatadir@"
+exec "@PYTHON@" -m mizuki "$@"

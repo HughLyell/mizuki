@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Mizuki
+GenericName=Anime Artwork Browser
+Comment=Browse and download anime artwork from multiple sources
+Exec=mizuki
+Icon=io.github.hughlyell.Mizuki
+Terminal=false
+Type=Application
+Categories=Graphics;2DGraphics;Viewer;
+Keywords=anime;art;booru;image;download;wallpaper;manga;
+StartupNotify=true
+StartupWMClass=io.github.hughlyell.Mizuki

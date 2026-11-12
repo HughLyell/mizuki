@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="18" y1="8" x2="112" y2="122" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2b1747"/>
+      <stop offset="0.55" stop-color="#4c2a7c"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="moon" x1="70" y1="20" x2="101" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff7ea"/>
+      <stop offset="1" stop-color="#e3d2ff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(82 36) rotate(90) scale(46)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f3e8ff" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#f3e8ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="4" y="4" width="120" height="120" rx="30" fill="url(#bg)"/>
+  <rect x="4" y="4" width="120" height="120" rx="30" fill="url(#glow)"/>
+
+  <path d="M77.5 24.5c-9.9 4.6-16.2 14.4-16.2 25.2 0 15.8 13.3 28.6 29.7 28.6 5.6 0 10.9-1.5 15.4-4.2-5.1 8.6-14.8 14.4-26.1 14.4-16.5 0-29.9-12.8-29.9-28.6 0-16.8 12.3-30.4 27.1-35.4z" fill="url(#moon)"/>
+
+  <rect x="27" y="45" width="67" height="53" rx="13" fill="none" stroke="#f5f0ff" stroke-width="4.5" stroke-linejoin="round"/>
+  <circle cx="43" cy="60" r="4.2" fill="#ffd9a8"/>
+  <path d="M31 88.5 47 72l10.5 10.5 8.5-8L84 91" fill="none" stroke="#f5f0ff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <path d="M95 80.5c.7 4.1 2.4 5.8 6.5 6.5-4.1.7-5.8 2.4-6.5 6.5-.7-4.1-2.4-5.8-6.5-6.5 4.1-.7 5.8-2.4 6.5-6.5z" fill="#ffd9a8"/>
+  <circle cx="27" cy="29" r="2.6" fill="#e9ddff" opacity="0.9"/>
+  <circle cx="36" cy="21" r="1.6" fill="#e9ddff" opacity="0.65"/>
+</svg>
