@@ -114,9 +114,16 @@ def fallback_phrase_tags(self, query: SearchQuery) -> list[str] | None:
 The built-in behaviour is useful for boorus where tags use underscores. For
 example, typing `Zenless Zone Zero` normally parses as three tags; if the normal
 query returns nothing, `fallback_phrase_tags()` retries `zenless_zone_zero` and
-uses those results if found. Zerochan overrides these methods because its tag
-names genuinely contain spaces; it treats the whole phrase (or comma-separated
-groups) as tags and uses commas to join multiple tags.
+uses those results if found. For two-word input the underscored phrase is tried
+first, because `hatsune miku` usually means the `hatsune_miku` tag. Commas are
+explicit tag groups and are never whitespace-split: `Hatsune Miku, landscape`
+becomes `Hatsune_Miku` plus `landscape`. Zerochan overrides these methods
+because its tag names genuinely contain spaces; it treats the whole phrase (or
+comma-separated groups) as tags and uses commas to join multiple tags.
+
+`search_variants()` combines these rules and caches the interpretation that
+produced results. Override it only if your source needs a full custom search
+plan; otherwise override `query_tags()` and `fallback_phrase_tags()`.
 
 Override these methods if your source has different tag syntax. Keep
 `query_tags(text)` free of network calls; use the source's `search()` for any

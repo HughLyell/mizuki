@@ -127,10 +127,24 @@ def get_text(
     headers: Mapping[str, str] | None = None,
     timeout: int = DEFAULT_TIMEOUT,
 ) -> str:
+    text, _final_url = get_text_with_url(
+        url, params=params, headers=headers, timeout=timeout
+    )
+    return text
+
+
+def get_text_with_url(
+    url: str,
+    *,
+    params: Mapping[str, Any] | None = None,
+    headers: Mapping[str, str] | None = None,
+    timeout: int = DEFAULT_TIMEOUT,
+) -> tuple[str, str]:
     response = _open(url, params=params, headers=headers, timeout=timeout)
     try:
         charset = response.headers.get_content_charset() or "utf-8"
-        return response.read().decode(charset, "replace")
+        text = response.read().decode(charset, "replace")
+        return text, response.geturl()
     except OSError as exc:
         raise NetworkError(f"Connection interrupted: {exc}") from exc
     finally:

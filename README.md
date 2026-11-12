@@ -179,6 +179,32 @@ Mizuki is deliberately small and native:
 - Zerochan supports multiple tags comma-separated; Mizuki handles this
   automatically.
 
+## Source search syntax
+
+Mizuki normalises queries per source and tries safe phrase fallbacks for
+multi-word tag names:
+
+- **Two-word input** such as `hatsune miku` is tried first as
+  `hatsune_miku`, then as two separate tags.
+- **Three or more words** such as `Zenless Zone Zero` are tried normally, then
+  as one underscored tag.
+- **Commas** are explicit tag groups: `Hatsune Miku, landscape` searches
+  `Hatsune_Miku` and `landscape` on conventional boorus, and
+  `Hatsune Miku` + `landscape` on Zerochan.
+
+| Source | Search syntax | Notes |
+|---|---|---|
+| **Danbooru** | `tag1 tag2`, `-tag`, `tag*`, `{a ~ b}`, `score:>100`, `order:` metatags | 2-tag limit for anonymous requests; max 200 results/page |
+| **Safebooru** | Gelbooru syntax: `-tag`, `tag*`, `~tag` fuzzy, `( a ~ b )` OR, `score:>=10`, `sort:score:desc`, `sort:random` | Always safe; 1000 results/page API limit |
+| **Konachan** | `tag1 tag2`, `-tag`, `tag*`, `~tag`, `score:`, `order:score`, `order:random` | Max 6 tags per search; ratings `s`/`q`/`e` |
+| **Yande.re** | Same as Konachan | Max 6 tags; `order:random` can occasionally return few results |
+| **Zerochan** | Spaces belong to the tag: `Zenless Zone Zero`; commas separate tags: `Zenless Zone Zero, landscape`; `s=id` recent, `s=fav` popular, `s=random` | No wildcard or exclusion syntax; guest pages hide some images behind a member login |
+
+The sort dropdown maps to the best available server-side order for each source;
+“Best match” uses Danbooru’s relevance order and otherwise leaves the source’s
+natural order.
+
+
 ## Safety
 
 Safe search is enabled on first launch:

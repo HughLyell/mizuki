@@ -69,6 +69,23 @@ def parse_tags(text: str) -> list[str]:
     return tags
 
 
+def split_comma_groups(text: str) -> list[str] | None:
+    """Split explicitly comma-separated tag groups, preserving spaces.
+
+    Returns ``None`` when the text has no comma, meaning the caller should use
+    normal whitespace-separated parsing.
+    """
+    raw = str(text or "").strip()
+    if "," not in raw:
+        return None
+    groups: list[str] = []
+    for group in raw.split(","):
+        term = " ".join(group.strip().strip('"').split())
+        if term and term not in groups:
+            groups.append(term)
+    return groups
+
+
 def sanitize_component(value: str, fallback: str = "artwork", max_length: int = 64) -> str:
     """Make a string safe for use as part of a filename."""
     normalised = unicodedata.normalize("NFKC", str(value or ""))
