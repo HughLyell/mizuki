@@ -172,6 +172,8 @@ class ZerochanSource(Source):
 
     def __init__(self) -> None:
         self._supplement_cache: dict[str, tuple[float, list[Post], str]] = {}
+        self._resolution_cache: dict[str, tuple[float, list[str]]] = {}
+        self._html_cache: dict[str, tuple[float, str]] = {}
         self._cache_lock = threading.Lock()
 
     def headers(self) -> dict[str, str]:
@@ -180,11 +182,47 @@ class ZerochanSource(Source):
             "Referer": BASE_URL + "/",
         }
 
-    def search_path(self, query: SearchQuery) -> str:
-        tags = [tag for tag in query.tags if not tag.startswith("-")][:3]
-        if not tags:
+    @staticmethod
+    def _normalise_terms(text: str) -> list[str]:
+        """Parse Zerochan query text.
+
+        Zerochan tag names can contain spaces, so unless the user supplied
+        commas, the whole text is treated as one tag first. Comma-separated
+        groups are treated as separate tags and may themselves contain spaces.
+        """
+        raw = str(text or "").strip()
+        if not raw:
+            return []
+        groups = raw.split(",") if "," in raw else [raw]
+        terms: list[str] = []
+        for group in groups:
+            term = group.strip().strip('"').strip()
+            term = " ".join(term.replace("_", " ").split())
+            if not term:
+                continue
+            if term.lower().startswith(("rating:", "order:", "status:")):
+                continue
+            if term not in terms:
+                terms.append(term)
+        return terms
+
+    def query_tags(self, query: SearchQuery) -> list[str]:
+        return self._normalise_terms(query.text)
+
+    def display_tags(self, text: str) -> list[str]:
+        return self._normalise_terms(text)
+
+    def join_tags(self, tags: list[str]) -> str:
+        return ", ".join(tags)
+
+    def _path_for_tags(self, tags: list[str]) -> str:
+        clean = [tag for tag in tags if tag and not tag.startswith("-")][:3]
+        if not clean:
             return "/"
-        return "/" + ",".join(self._encode_tag_path(tag).lstrip("/") for tag in tags)
+        return "/" + ",".join(self._encode_tag_path(tag).lstrip("/") for tag in clean)
+
+    def search_path(self, query: SearchQuery) -> str:
+        return self._path_for_tags(self.query_tags(query))
 
     @staticmethod
     def _encode_tag_path(tag: str) -> str:
@@ -211,18 +249,14 @@ class ZerochanSource(Source):
     def _find_correction(self, tag: str) -> tuple[str, str] | None:
         for candidate in self._typo_candidates(tag):
             try:
-                html = net.get_text(
-                    BASE_URL + self._encode_tag_path(candidate),
-                    headers=self.headers(),
-                    timeout=15,
-                )
+                html = self._fetch_html(BASE_URL + self._encode_tag_path(candidate), timeout=15)
             except net.NetworkError:
                 continue
             if "Just a moment" in html and "cloudflare" in html.lower():
                 continue
-            parser = _GalleryParser()
             try:
-                parser.feed(html)
+                parser = _GalleryParser()
+                parser.feed(self._gallery_fragment(html))
             except Exception:
                 continue
             if parser.items:
@@ -230,8 +264,8 @@ class ZerochanSource(Source):
                 return html, candidate
         return None
 
-    def search_url(self, query: SearchQuery) -> str:
-        path = self.search_path(query)
+    def _url_for_tags(self, tags: list[str], query: SearchQuery) -> str:
+        path = self._path_for_tags(tags)
         params: list[str] = []
         if query.page > 1:
             params.append(f"p={query.page}")
@@ -241,53 +275,128 @@ class ZerochanSource(Source):
             return f"{BASE_URL}{path}?{'&'.join(params)}"
         return f"{BASE_URL}{path}"
 
-    def search(self, query: SearchQuery) -> SourcePage:
-        tags = [tag for tag in query.tags if not tag.startswith("-")]
-        corrected_from = ""
-        corrected_tag = ""
-        try:
-            html = net.get_text(self.search_url(query), headers=self.headers(), timeout=25)
-        except net.NetworkError as exc:
-            if exc.status != 404:
-                raise SourceError(str(exc)) from exc
-            if query.page > 1:
-                return SourcePage(posts=[], has_more=False)
-            if len(tags) == 1:
-                correction = self._find_correction(tags[0])
-                if correction:
-                    html, corrected_tag = correction
-                    corrected_from = tags[0]
-                else:
-                    return SourcePage(
-                        posts=[],
-                        has_more=False,
-                        notice=f"Zerochan has no tag matching '{tags[0]}'.",
-                    )
-            elif tags:
-                return SourcePage(
-                    posts=[],
-                    has_more=False,
-                    notice="Zerochan has no tag matching this search.",
-                )
-            else:
-                raise SourceError(str(exc)) from exc
-        if "Just a moment" in html and "cloudflare" in html.lower():
-            raise SourceError("Zerochan is currently blocking automated requests. Try again later.")
+    def search_url(self, query: SearchQuery) -> str:
+        return self._url_for_tags(self.query_tags(query), query)
+
+    def _tag_variants(self, query: SearchQuery) -> list[list[str]]:
+        terms = self.query_tags(query)
+        raw = str(query.text or "").strip()
+        if not terms:
+            return [[]]
+        if "," in raw:
+            return [terms]
+        if len(terms) == 1:
+            words = [word for word in re.split(r"\s+", terms[0]) if word]
+            if len(words) > 1:
+                return [[terms[0]], words]
+        return [terms]
+
+    def _fetch_html(self, url: str, timeout: int = 25) -> str:
+        now = time.time()
+        with self._cache_lock:
+            cached = self._html_cache.get(url)
+            if cached and now - cached[0] < 60:
+                return cached[1]
+        html = net.get_text(url, headers=self.headers(), timeout=timeout)
+        with self._cache_lock:
+            if len(self._html_cache) > 80:
+                self._html_cache.clear()
+            self._html_cache[url] = (now, html)
+        return html
+
+    @staticmethod
+    def _gallery_fragment(html: str) -> str:
+        match = re.search(
+            r'<ul[^>]+id="thumbs\d+"[^>]*>(.*?)</ul>',
+            html,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if not match:
+            return html
+        return "<ul>" + match.group(1) + "</ul>"
+
+    def _parse_posts(self, html: str) -> list[Post]:
         parser = _GalleryParser()
-        try:
-            parser.feed(html)
-        except Exception as exc:  # malformed markup should not crash the app
-            raise SourceError(f"Could not parse Zerochan's response: {exc}") from exc
+        parser.feed(self._gallery_fragment(html))
         posts: list[Post] = []
         for item in parser.items:
             post = self._to_post(item)
             if post is not None:
                 posts.append(post)
+        return posts
+
+    def search(self, query: SearchQuery) -> SourcePage:
+        original_terms = self.query_tags(query)
+        variants = self._tag_variants(query)
+        resolution_key = " ".join(str(query.text or "").lower().split())
+        now = time.time()
+        with self._cache_lock:
+            cached = self._resolution_cache.get(resolution_key)
+            if cached and now - cached[0] < _SUPPLEMENT_TTL:
+                variants = [cached[1]] + [variant for variant in variants if variant != cached[1]]
+
+        html: str | None = None
+        chosen_tags: list[str] = []
+        corrected_from = ""
+        corrected_tag = ""
+        no_results_notice = ""
+        for index, tags in enumerate(variants):
+            try:
+                html = self._fetch_html(self._url_for_tags(tags, query))
+            except net.NetworkError as exc:
+                if exc.status != 404:
+                    raise SourceError(str(exc)) from exc
+                if index == 0 and query.page == 1 and len(tags) == 1:
+                    correction = self._find_correction(tags[0])
+                    if correction:
+                        html, corrected_tag = correction
+                        corrected_from = tags[0]
+                        chosen_tags = [corrected_tag]
+                        break
+                no_results_notice = (
+                    f"Zerochan has no tag matching '{original_terms[0]}'."
+                    if len(original_terms) == 1
+                    else "Zerochan has no tag matching this search."
+                )
+                continue
+            if "Just a moment" in html and "cloudflare" in html.lower():
+                raise SourceError("Zerochan is currently blocking automated requests. Try again later.")
+            try:
+                posts = self._parse_posts(html)
+            except Exception as exc:
+                raise SourceError(f"Could not parse Zerochan's response: {exc}") from exc
+            member_only = "members only" in html.lower()
+            if posts or member_only or not tags:
+                chosen_tags = tags
+                break
+            no_results_notice = (
+                f"Zerochan has no tag matching '{original_terms[0]}'."
+                if len(original_terms) == 1
+                else "Zerochan has no tag matching this search."
+            )
+        else:
+            return SourcePage(
+                posts=[],
+                has_more=False,
+                notice=no_results_notice or "Zerochan has no tag matching this search.",
+            )
+
+        if html is None:
+            return SourcePage(posts=[], has_more=False, notice=no_results_notice)
+
+        try:
+            posts = self._parse_posts(html)
+        except Exception as exc:
+            raise SourceError(f"Could not parse Zerochan's response: {exc}") from exc
+
+        if chosen_tags:
+            with self._cache_lock:
+                self._resolution_cache[resolution_key] = (now, list(chosen_tags))
 
         has_more = bool(posts)
         notice = ""
         member_only = "members only" in html.lower()
-        supplement_tag = corrected_tag or (tags[0] if len(tags) == 1 else "")
+        supplement_tag = corrected_tag or (chosen_tags[0] if len(chosen_tags) == 1 else "")
         if (
             member_only
             and query.page == 1
@@ -345,13 +454,12 @@ class ZerochanSource(Source):
 
         def fetch_similar(post: Post) -> list[dict]:
             try:
-                html = net.get_text(
+                html = self._fetch_html(
                     f"{BASE_URL}/similar3?id={post.id}&ajax",
-                    headers=self.headers(),
                     timeout=20,
                 )
                 parser = _GalleryParser()
-                parser.feed(html)
+                parser.feed(self._gallery_fragment(html))
                 return parser.items
             except Exception:
                 log.debug("Zerochan similar fetch failed for %s", post.id, exc_info=True)
@@ -373,7 +481,7 @@ class ZerochanSource(Source):
             log.debug("Zerochan similar-image supplement failed", exc_info=True)
 
         try:
-            page_html = net.get_text(public_posts[0].page_url, headers=self.headers(), timeout=20)
+            page_html = self._fetch_html(public_posts[0].page_url, timeout=20)
             tag_data = self._extract_tag_data(page_html)
             block = None
             for name, data in tag_data.items():

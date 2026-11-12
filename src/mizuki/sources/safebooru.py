@@ -38,14 +38,27 @@ class SafebooruSource(Source):
     def headers(self) -> dict[str, str]:
         return {"Accept": "application/json", "Referer": "https://safebooru.org/"}
 
-    def search_tags(self, query: SearchQuery) -> list[str]:
+    def search_tags(self, query: SearchQuery, tags_override: list[str] | None = None) -> list[str]:
         return [
             tag
-            for tag in query.tags
+            for tag in (tags_override if tags_override is not None else self.query_tags(query))
             if not tag.lstrip("-").lower().startswith(("rating:", "order:", "status:"))
         ]
 
     def search(self, query: SearchQuery) -> SourcePage:
+        tags = self.query_tags(query)
+        phrase = self.fallback_phrase_tags(query)
+        page = self._search_tags(query, tags)
+        if not page.posts and phrase is not None and [tag.lower() for tag in tags] != [tag.lower() for tag in phrase]:
+            try:
+                alternate = self._search_tags(query, phrase)
+            except SourceError:
+                return page
+            if alternate.posts:
+                return alternate
+        return page
+
+    def _search_tags(self, query: SearchQuery, tags_override: list[str]) -> SourcePage:
         limit = max(1, min(query.limit, 100))
         params = {
             "page": "dapi",
@@ -55,7 +68,7 @@ class SafebooruSource(Source):
             "limit": limit,
             "pid": max(0, query.page - 1),
         }
-        tags = self.search_tags(query)
+        tags = self.search_tags(query, tags_override=tags_override)
         if tags:
             params["tags"] = " ".join(tags)
         try:

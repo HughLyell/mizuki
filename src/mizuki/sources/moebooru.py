@@ -31,10 +31,10 @@ class MoebooruSource(Source):
     def headers(self) -> dict[str, str]:
         return {"Accept": "application/json", "Referer": self.base_url + "/"}
 
-    def search_tags(self, query: SearchQuery) -> list[str]:
+    def search_tags(self, query: SearchQuery, tags_override: list[str] | None = None) -> list[str]:
         tags = [
             tag
-            for tag in query.tags
+            for tag in (tags_override if tags_override is not None else self.query_tags(query))
             if not tag.lstrip("-").lower().startswith(("rating:", "order:", "status:"))
         ]
         if query.safe:
@@ -46,12 +46,25 @@ class MoebooruSource(Source):
         return tags
 
     def search(self, query: SearchQuery) -> SourcePage:
+        tags = self.query_tags(query)
+        phrase = self.fallback_phrase_tags(query)
+        page = self._search_tags(query, tags)
+        if not page.posts and phrase is not None and [tag.lower() for tag in tags] != [tag.lower() for tag in phrase]:
+            try:
+                alternate = self._search_tags(query, phrase)
+            except SourceError:
+                return page
+            if alternate.posts:
+                return alternate
+        return page
+
+    def _search_tags(self, query: SearchQuery, tags_override: list[str]) -> SourcePage:
         limit = max(1, min(query.limit, 100))
         try:
             payload = net.get_json(
                 self.base_url + "/post.json",
                 params={
-                    "tags": " ".join(self.search_tags(query)),
+                    "tags": " ".join(self.search_tags(query, tags_override)),
                     "limit": limit,
                     "page": query.page,
                 },

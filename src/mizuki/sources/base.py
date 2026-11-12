@@ -7,7 +7,7 @@ worker threads.
 
 from __future__ import annotations
 
-from ..models import Post, SearchQuery, SourcePage
+from ..models import Post, SearchQuery, SourcePage, parse_tags
 
 
 class SourceError(Exception):
@@ -37,6 +37,41 @@ class Source:
     def suggest_tags(self, prefix: str, limit: int = 8) -> list[str]:
         """Return tag completions for ``prefix`` (optional)."""
         return []
+
+    def query_tags(self, query: SearchQuery) -> list[str]:
+        """Return the source-specific tags for a query.
+
+        Most boorus separate tags with whitespace. Sources whose tag names may
+        contain spaces (Zerochan) override this.
+        """
+        return query.tags
+
+    def display_tags(self, text: str) -> list[str]:
+        """Split raw query text for display and chip removal."""
+        return parse_tags(text)
+
+    def join_tags(self, tags: list[str]) -> str:
+        """Join chips back into the search box syntax for this source."""
+        return " ".join(tags)
+
+    def fallback_phrase_tags(self, query: SearchQuery) -> list[str] | None:
+        """Return a single underscored phrase for multiword tag input.
+
+        Booru users often type a tag name with spaces even though boorus store
+        underscores. This fallback is used only when the normal multi-tag
+        interpretation returns nothing (or is too large for the source).
+        """
+        raw = str(query.text or "").strip().strip('"').strip()
+        if not raw or "," in raw:
+            return None
+        words = raw.split()
+        if len(words) < 2:
+            return None
+        phrase = "_".join(words)
+        current = [tag.lower().replace("_", " ") for tag in self.query_tags(query)]
+        if len(current) == 1 and current[0] == phrase.lower().replace("_", " "):
+            return None
+        return [phrase]
 
     def headers(self) -> dict[str, str]:
         """Extra HTTP headers required by this source."""

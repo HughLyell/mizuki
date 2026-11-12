@@ -91,6 +91,38 @@ posts = [
 return SourcePage(posts=posts, has_more=len(raw_posts) >= query.limit)
 ```
 
+### Query parsing and multi-word tags
+
+`SearchQuery.text` is the raw text from the search box. The default `query.tags`
+behaviour whitespace-splits it, but sources can override how a query is
+interpreted:
+
+```python
+def query_tags(self, query: SearchQuery) -> list[str]:
+    ...  # tags actually sent to the source
+
+def display_tags(self, text: str) -> list[str]:
+    ...  # how query chips are grouped in the UI
+
+def join_tags(self, tags: list[str]) -> str:
+    ...  # rebuild the search box after removing a chip
+
+def fallback_phrase_tags(self, query: SearchQuery) -> list[str] | None:
+    ...  # optional underscored phrase fallback
+```
+
+The built-in behaviour is useful for boorus where tags use underscores. For
+example, typing `Zenless Zone Zero` normally parses as three tags; if the normal
+query returns nothing, `fallback_phrase_tags()` retries `zenless_zone_zero` and
+uses those results if found. Zerochan overrides these methods because its tag
+names genuinely contain spaces; it treats the whole phrase (or comma-separated
+groups) as tags and uses commas to join multiple tags.
+
+Override these methods if your source has different tag syntax. Keep
+`query_tags(text)` free of network calls; use the source's `search()` for any
+fallback that needs HTTP.
+
+
 ### Safety requirements
 
 Mizuki enforces safe search at two levels:

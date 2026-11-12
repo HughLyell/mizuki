@@ -163,6 +163,11 @@ Mizuki is deliberately small and native:
 - Separate tags with spaces: `1girl landscape sky` (AND).
 - Prefix a tag with `-` to exclude it on boorus that support it: `landscape -monochrome`.
 - Quote a phrase to keep it together: `"blue sky"`.
+- Multi-word tag names can be typed naturally: `Zenless Zone Zero`. Zerochan
+  treats the phrase as one tag; booru sources automatically retry it as
+  `zenless_zone_zero` when the normal tag split returns nothing.
+- Use commas to search multiple tags on a source that supports spaces in tag
+  names (for example Zerochan): `Zenless Zone Zero, landscape`.
 - Use the **Filter** field under the source selector to narrow the currently
   loaded results for that one source. Separate tags with commas: `1girl, smile`.
   Every tag must match. The filter is hidden when “All sources” is selected and

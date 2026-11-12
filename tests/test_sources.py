@@ -80,15 +80,43 @@ class DanbooruTagTests(unittest.TestCase):
         self.assertEqual(moebooru_rating("q"), "questionable")
         self.assertEqual(moebooru_rating("e"), "explicit")
 
+    def test_multiword_phrase_fallback(self) -> None:
+        source = DanbooruSource()
+        query = SearchQuery(text="Zenless Zone Zero")
+        self.assertEqual(source.fallback_phrase_tags(query), ["Zenless_Zone_Zero"])
+        self.assertIsNone(source.fallback_phrase_tags(SearchQuery(text="landscape")))
+        self.assertIsNone(source.fallback_phrase_tags(SearchQuery(text="landscape, sky")))
+
 
 class ZerochanTests(unittest.TestCase):
     def test_url_multi_tag(self) -> None:
         source = ZerochanSource()
-        query = SearchQuery(text="frieren landscape", page=2, sort="score")
+        query = SearchQuery(text="frieren, landscape", page=2, sort="score")
         url = source.search_url(query)
         self.assertIn("/frieren,landscape", url)
         self.assertIn("p=2", url)
         self.assertIn("s=fav", url)
+
+    def test_multiword_tag_is_one_tag(self) -> None:
+        source = ZerochanSource()
+        query = SearchQuery(text="Zenless Zone Zero")
+        self.assertEqual(source.query_tags(query), ["Zenless Zone Zero"])
+        self.assertEqual(source.search_path(query), "/Zenless+Zone+Zero")
+        self.assertEqual(source.display_tags("Zenless Zone Zero"), ["Zenless Zone Zero"])
+        self.assertEqual(
+            source.display_tags("landscape, Zenless Zone Zero"),
+            ["landscape", "Zenless Zone Zero"],
+        )
+        self.assertEqual(
+            source.join_tags(["landscape", "Zenless Zone Zero"]),
+            "landscape, Zenless Zone Zero",
+        )
+
+    def test_space_separated_fallback_variants(self) -> None:
+        source = ZerochanSource()
+        variants = source._tag_variants(SearchQuery(text="landscape sky"))
+        self.assertEqual(variants[0], ["landscape sky"])
+        self.assertEqual(variants[1], ["landscape", "sky"])
 
     def test_parser_extracts_posts(self) -> None:
         parser = _GalleryParser()

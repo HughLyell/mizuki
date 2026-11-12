@@ -323,6 +323,7 @@ class DiscoverPage(Gtk.Box):
         self._source_id = source_id
         self._sync_source_drop()
         self._sync_filter_entry()
+        self._build_query_chips()
         self._update_empty_suggestions()
         if run:
             self.run_search(reset=True)
@@ -745,12 +746,20 @@ class DiscoverPage(Gtk.Box):
         return [source] if source is not None else []
 
     # -- query chips -----------------------------------------------------
+    def _display_tags(self) -> list[str]:
+        text = self.search_entry.get_text()
+        if self._source_id != "all":
+            source = self.registry.get(self._source_id)
+            if source is not None:
+                return source.display_tags(text)
+        return parse_tags(text)
+
     def _build_query_chips(self) -> None:
         child = self.query_chips.get_first_child()
         while child is not None:
             self.query_chips.remove(child)
             child = self.query_chips.get_first_child()
-        tags = self._query.tags
+        tags = self._display_tags()
         for tag in tags:
             button = Gtk.Button()
             button.add_css_class("query-chip")
@@ -766,8 +775,10 @@ class DiscoverPage(Gtk.Box):
         self.query_chips.set_visible(bool(tags))
 
     def _remove_tag(self, _button, tag: str) -> None:
-        tags = [item for item in parse_tags(self.search_entry.get_text()) if item != tag]
-        self.search_entry.set_text(" ".join(tags))
+        remaining = [item for item in self._display_tags() if item != tag]
+        source = self.registry.get(self._source_id) if self._source_id != "all" else None
+        text = source.join_tags(remaining) if source is not None else " ".join(remaining)
+        self.search_entry.set_text(text)
         self.run_search(reset=True)
 
     # -- empty state suggestions -----------------------------------------
