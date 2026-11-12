@@ -19,6 +19,7 @@ log = logging.getLogger(__name__)
 GALLERY_GAP = 12
 # .image-card has a 1px border on each side; size requests exclude CSS chrome.
 CARD_CHROME = 2
+GRID_HORIZONTAL_MARGIN = 48
 
 # target row height, minimum row height, maximum row height
 GRID_SIZES: dict[str, tuple[int, int, int]] = {
@@ -176,6 +177,17 @@ class PostGrid(Gtk.ScrolledWindow):
     def request_relayout(self) -> None:
         self._relayout(force=True)
 
+    def prepare_for_width(self, width: int) -> None:
+        """Shrink tiles before a sidebar expands into the content area.
+
+        The cards' size requests are part of the content's minimum width. If
+        the sidebar is revealed first, the window can grow instead of letting
+        the gallery shrink, pushing part of the app off-screen.
+        """
+        if width > 0:
+            content_width = max(240, int(width) - GRID_HORIZONTAL_MARGIN)
+            self._relayout(content_width, force=True)
+
     def refresh_favorites(self) -> None:
         favorite_keys = {post.key for post in self.favorites.all()}
         for key, card in self._cards.items():
@@ -250,7 +262,7 @@ class PostGrid(Gtk.ScrolledWindow):
         outer_width = self.get_width()
         if outer_width <= 0:
             return 1100
-        return max(240, min(self._max_width, outer_width - 48))
+        return max(240, min(self._max_width, outer_width - GRID_HORIZONTAL_MARGIN))
 
     def _poll_width(self):
         try:

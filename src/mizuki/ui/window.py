@@ -44,6 +44,7 @@ class MizukiWindow(Adw.ApplicationWindow):
         self._syncing_safe = False
         self._syncing_sidebar = False
         self._sidebar_visible = bool(self.settings.get("sidebar_visible", True))
+        self._last_sidebar_width = 272
         self._source_selection_guard = False
         self._changing_source = False
         self._preferences: PreferencesDialog | None = None
@@ -174,11 +175,12 @@ class MizukiWindow(Adw.ApplicationWindow):
         return header
 
     def _build_body(self) -> Gtk.Widget:
-        self.split_view = Adw.OverlaySplitView()
-        self.split_view.set_min_sidebar_width(248)
-        self.split_view.set_max_sidebar_width(300)
-        self.split_view.set_pin_sidebar(True)
-        self.split_view.set_show_sidebar(self._sidebar_visible)
+        # A plain horizontal box makes the sidebar and content share one fixed
+        # window width. Adw.OverlaySplitView could grow the window when the
+        # sidebar was revealed, pushing the opposite edge off-screen.
+        self.split_view = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        self.split_view.set_hexpand(True)
+        self.split_view.set_vexpand(True)
 
         self.page_stack = Gtk.Stack()
         self.page_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
@@ -186,8 +188,10 @@ class MizukiWindow(Adw.ApplicationWindow):
         self.page_stack.set_vexpand(True)
         self.page_stack.set_hexpand(True)
 
-        self.split_view.set_sidebar(self._build_sidebar())
-        self.split_view.set_content(self.page_stack)
+        self.sidebar_widget = self._build_sidebar()
+        self.sidebar_widget.set_visible(self._sidebar_visible)
+        self.split_view.append(self.sidebar_widget)
+        self.split_view.append(self.page_stack)
         return self.split_view
 
     def _build_sidebar(self) -> Gtk.Widget:
@@ -238,12 +242,8 @@ class MizukiWindow(Adw.ApplicationWindow):
         self.sidebar_recent_box.set_margin_top(2)
         self.sidebar_recent_box.set_margin_bottom(4)
 
-        self.sidebar_recent = Gtk.FlowBox()
-        self.sidebar_recent.set_selection_mode(Gtk.SelectionMode.NONE)
-        self.sidebar_recent.set_min_children_per_line(1)
-        self.sidebar_recent.set_max_children_per_line(2)
-        self.sidebar_recent.set_row_spacing(6)
-        self.sidebar_recent.set_column_spacing(6)
+        self.sidebar_recent = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.sidebar_recent.set_halign(Gtk.Align.FILL)
         self.sidebar_recent.set_valign(Gtk.Align.START)
         self.sidebar_recent_box.append(self.sidebar_recent)
 
@@ -448,34 +448,45 @@ class MizukiWindow(Adw.ApplicationWindow):
             " ".join(str(item).split())
             for item in self.settings.get("recent_searches", [])
             if str(item).strip()
-        ][:8]
-        for term in recent:
-            chip = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
-            chip.add_css_class("recent-chip")
+        ][:6]
+        for start in range(0, len(recent), 2):
+            pair = recent[start:start + 2]
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            row.set_homogeneous(True)
+            for term in pair:
+                chip = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+                chip.add_css_class("recent-chip")
+                chip.set_hexpand(True)
 
-            label = Gtk.Label(label=term)
-            label.set_ellipsize(Pango.EllipsizeMode.END)
-            label.set_max_width_chars(20)
-            label.set_xalign(0)
-            search = Gtk.Button()
-            search.add_css_class("flat")
-            search.add_css_class("recent-chip-search")
-            search.set_child(label)
-            search.set_tooltip_text(f"Search for “{term}”")
-            search.connect("clicked", lambda _b, value=term: self._search_tag(value))
-            chip.append(search)
+                label = Gtk.Label(label=term)
+                label.set_ellipsize(Pango.EllipsizeMode.END)
+                label.set_width_chars(11)
+                label.set_max_width_chars(11)
+                label.set_xalign(0)
+                search = Gtk.Button()
+                search.add_css_class("flat")
+                search.add_css_class("recent-chip-search")
+                search.set_child(label)
+                search.set_tooltip_text(f"Search for “{term}”")
+                search.connect("clicked", lambda _b, value=term: self._search_tag(value))
+                chip.append(search)
 
-            close = Gtk.Button(icon_name="window-close-symbolic")
-            close.add_css_class("flat")
-            close.add_css_class("recent-chip-close")
-            close.set_tooltip_text(f"Remove “{term}” from recent searches")
-            close.update_property(
-                [Gtk.AccessibleProperty.LABEL],
-                [f"Remove {term} from recent searches"],
-            )
-            close.connect("clicked", lambda _b, value=term: self._remove_recent_search(value))
-            chip.append(close)
-            self.sidebar_recent.append(chip)
+                close = Gtk.Button(icon_name="window-close-symbolic")
+                close.add_css_class("flat")
+                close.add_css_class("recent-chip-close")
+                close.set_tooltip_text(f"Remove “{term}” from recent searches")
+                close.update_property(
+                    [Gtk.AccessibleProperty.LABEL],
+                    [f"Remove {term} from recent searches"],
+                )
+                close.connect(
+                    "clicked", lambda _b, value=term: self._remove_recent_search(value)
+                )
+                chip.append(close)
+                row.append(chip)
+            if len(pair) == 1:
+                row.append(Gtk.Box())
+            self.sidebar_recent.append(row)
 
         self.sidebar_recent.set_visible(bool(recent))
         self.sidebar_recent_empty.set_visible(not recent)
@@ -503,16 +514,38 @@ class MizukiWindow(Adw.ApplicationWindow):
             self._syncing_sidebar = False
 
     def _apply_sidebar_visibility(self, visible: bool) -> None:
+        was_visible = self._sidebar_visible
         self._sidebar_visible = bool(visible)
-        if hasattr(self, "split_view"):
-            self.split_view.set_show_sidebar(self._sidebar_visible)
+
+        if hasattr(self, "sidebar_widget") and self.sidebar_widget.get_width() >= 200:
+            self._last_sidebar_width = self.sidebar_widget.get_width()
+
+        # Shrink the gallery before the sidebar takes its share of the window.
+        # This keeps the window fixed and lets the justified rows reflow.
+        if self._sidebar_visible and not was_visible:
+            sidebar_width = max(220, self._last_sidebar_width)
+            for grid in self._visible_grids():
+                current = grid.get_width()
+                if current > sidebar_width:
+                    grid.prepare_for_width(current - sidebar_width)
+
+        if hasattr(self, "sidebar_widget"):
+            self.sidebar_widget.set_visible(self._sidebar_visible)
         if hasattr(self, "sidebar_toggle"):
             label = "Hide sidebar" if self._sidebar_visible else "Show sidebar"
             self.sidebar_toggle.set_tooltip_text(label)
             self.sidebar_toggle.update_property(
                 [Gtk.AccessibleProperty.LABEL], [label]
             )
-        GLib.timeout_add(280, self._relayout_galleries)
+        GLib.timeout_add(80, self._relayout_galleries)
+
+    def _visible_grids(self) -> list:
+        grids = []
+        if hasattr(self, "discover"):
+            grids.append(self.discover.grid)
+        if hasattr(self, "favorites_page"):
+            grids.append(self.favorites_page.grid)
+        return grids
 
     def _relayout_galleries(self):
         if hasattr(self, "discover"):
