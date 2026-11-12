@@ -31,8 +31,9 @@ browser.
 - **SFW controls** — safe search is on by default, filters at the source, and
   requires confirmation before it can be disabled. Sources without a safe
   subset stay filtered. Sensitive thumbnails are covered by default.
-- **Infinity grid** — responsive, keyboard-accessible artwork tiles with
-  hover actions and a compact/comfortable/large size setting.
+- **Justified artwork grid** — responsive, keyboard-accessible tiles that keep
+  each image’s rough aspect ratio, with proportional widths and a shared row
+  height. Compact/comfortable/large size settings and hover actions included.
 - **Detail view** — high-resolution preview, metadata, clickable tags,
   copy-link and open-source actions.
 - **Downloads** — background queue with progress, cancel/retry, file manager
@@ -251,7 +252,8 @@ src/mizuki/
 └── ui/
     ├── window.py           # Main window, sidebar, navigation
     ├── discover.py         # Search panel, filters, suggestions
-    ├── grid.py             # Responsive FlowBox grid
+    ├── grid.py             # Justified responsive artwork gallery
+    ├── gallery_layout.py   # Aspect-ratio row packing maths
     ├── card.py             # Artwork tile
     ├── detail.py           # Full artwork dialog
     ├── pages.py            # Favourites and Downloads pages

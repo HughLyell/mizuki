@@ -198,10 +198,8 @@ headerbar.mizuki-header {
   background-color: transparent;
 }
 
-.image-grid > flowboxchild {
-  padding: 0;
+.gallery-row {
   background-color: transparent;
-  border-radius: 16px;
 }
 
 .image-card {

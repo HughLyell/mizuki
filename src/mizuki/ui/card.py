@@ -70,7 +70,7 @@ class ImageCard(Gtk.Box):
         self.picture.set_overflow(Gtk.Overflow.HIDDEN)
 
         # A non-scrolling viewport clips oversized images and, importantly,
-        # stops a tall image's natural size from inflating the FlowBox column.
+        # stops a tall image's natural size from inflating the gallery row.
         self._viewport = Gtk.ScrolledWindow()
         self._viewport.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.NEVER)
         self._viewport.set_propagate_natural_width(False)
