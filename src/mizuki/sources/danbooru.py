@@ -49,6 +49,11 @@ class DanbooruSource(Source):
         return tags
 
     def search(self, query: SearchQuery) -> SourcePage:
+        if len(query.tags) > 2:
+            raise SourceError(
+                "Danbooru's anonymous API allows at most two tags per search. "
+                "Try fewer tags, or use another source."
+            )
         limit = max(1, min(query.limit, 100))
         tags = self.search_tags(query)
         try:

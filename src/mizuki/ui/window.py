@@ -479,12 +479,18 @@ class MizukiWindow(Adw.ApplicationWindow):
     def _toggle_favorite(self, post: Post) -> bool:
         state = self.favorites.toggle(post)
         self.discover.refresh_favorites()
+        if self._current_page == "favorites" and not state:
+            GLib.idle_add(self._refresh_favorites_idle)
         if state:
             self.toast(f"Added “{post.source_name}” artwork to favourites")
         else:
             self.toast("Removed from favourites")
         self._update_header()
         return state
+
+    def _refresh_favorites_idle(self):
+        self.favorites_page.refresh()
+        return False
 
     def _open_post(self, post: Post) -> None:
         dialog = ImageDetailDialog(

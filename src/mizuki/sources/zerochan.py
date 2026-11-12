@@ -161,10 +161,13 @@ class ZerochanSource(Source):
         }
 
     def search_path(self, query: SearchQuery) -> str:
-        tags = query.tags[:3]
+        tags = [tag for tag in query.tags if not tag.startswith("-")][:3]
         if not tags:
             return "/"
-        encoded = ",".join(urllib.parse.quote(tag.replace(" ", "+"), safe="+()_.-") for tag in tags)
+        encoded = ",".join(
+            urllib.parse.quote(tag.replace("_", " ").replace(" ", "+"), safe="+()_.-")
+            for tag in tags
+        )
         return "/" + encoded
 
     def search_url(self, query: SearchQuery) -> str:
