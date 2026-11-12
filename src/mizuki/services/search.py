@@ -64,7 +64,12 @@ class SearchController:
             errors: list[str] = []
             for source, future in futures:
                 try:
-                    pages.append(future.result())
+                    page = future.result()
+                    pages.append(page)
+                    log.info(
+                        "Source %s returned %d posts (has_more=%s)",
+                        source.id, len(page.posts), page.has_more,
+                    )
                 except SourceError as exc:
                     log.warning("Source %s failed: %s", source.id, exc)
                     errors.append(f"{source.name}: {exc}")
@@ -92,6 +97,7 @@ class SearchController:
                 on_error(errors[0] if errors else "Every source failed. Check your connection and try again.")
                 return False
             posts, has_more = merge_pages(pages, limit=1000)
+            log.info("Delivering %d merged posts (has_more=%s, errors=%d)", len(posts), has_more, len(errors))
             on_results(posts, has_more, errors)
         except Exception:  # pragma: no cover - defensive UI boundary
             log.exception("Could not deliver search results")
