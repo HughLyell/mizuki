@@ -44,6 +44,7 @@ class MizukiWindow(Adw.ApplicationWindow):
         self.theme = app.theme
         self._current_page = "discover"
         self._syncing_safe = False
+        self._source_selection_guard = False
         self._changing_source = False
         self._preferences: PreferencesDialog | None = None
         self._dialogs: set[ImageDetailDialog] = set()
@@ -221,7 +222,7 @@ class MizukiWindow(Adw.ApplicationWindow):
         self.source_list = Gtk.ListBox()
         self.source_list.add_css_class("navigation-sidebar")
         self.source_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
-        self.source_list.connect("row-activated", self._on_source_row_activated)
+        self.source_list.connect("row-selected", self._on_source_row_activated)
         self._source_rows: dict[str, Adw.ActionRow] = {}
         inner.append(self.source_list)
 
@@ -397,6 +398,8 @@ class MizukiWindow(Adw.ApplicationWindow):
         self._sync_source_selection(self.discover.current_source_id() if hasattr(self, "discover") else "all")
 
     def _on_source_row_activated(self, _listbox, row) -> None:
+        if self._source_selection_guard or row is None:
+            return
         source_id = self._row_marker(row, "_mizuki_source")
         if source_id:
             self._on_source_selected(source_id, run=True)
@@ -404,7 +407,11 @@ class MizukiWindow(Adw.ApplicationWindow):
     def _sync_source_selection(self, source_id: str) -> None:
         row = self._source_rows.get(source_id)
         if row is not None:
-            self.source_list.select_row(row)
+            self._source_selection_guard = True
+            try:
+                self.source_list.select_row(row)
+            finally:
+                self._source_selection_guard = False
             log.debug(
                 "Selected source %s (row=%r, selected=%r)",
                 source_id, row, self.source_list.get_selected_row(),

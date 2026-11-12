@@ -77,6 +77,17 @@ class SettingsTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             settings.set("definitely_not_a_setting", 1)
 
+    def test_source_filters_round_trip(self) -> None:
+        settings = Settings(self.path)
+        settings.set_source_filter("danbooru", "1girl, landscape")
+        settings.set_source_filter("zerochan", "genshin impact")
+        reloaded = Settings(self.path)
+        self.assertEqual(reloaded.get_source_filter("danbooru"), "1girl, landscape")
+        self.assertEqual(reloaded.get_source_filter("zerochan"), "genshin impact")
+        settings.set_source_filter("danbooru", "")
+        self.assertEqual(settings.get_source_filter("danbooru"), "")
+        self.assertNotIn("danbooru", settings.get("source_filters"))
+
 
 class FavoriteStoreTests(unittest.TestCase):
     def setUp(self) -> None:

@@ -89,6 +89,25 @@ def extension_from_url(url: str, fallback: str = "jpg") -> str:
     return ext if ext in IMAGE_EXTENSIONS else fallback
 
 
+def parse_filter_tags(text: str) -> list[str]:
+    """Parse a comma-separated per-source result filter."""
+    tags: list[str] = []
+    for raw in str(text or "").split(","):
+        tag = raw.strip().lower().replace("_", " ")
+        if tag and tag not in tags:
+            tags.append(tag)
+    return tags
+
+
+def post_matches_filter(post: "Post", text: str) -> bool:
+    """Return True if ``post`` contains every comma-separated filter tag."""
+    wanted = parse_filter_tags(text)
+    if not wanted:
+        return True
+    available = {tag.lower().replace("_", " ") for tag in post.tags}
+    return all(tag in available for tag in wanted)
+
+
 @dataclass(frozen=True, slots=True)
 class Post:
     """A single image post returned by a source."""

@@ -11,7 +11,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from ..models import Post, SearchQuery, parse_tags  # noqa: E402
+from ..models import Post, SearchQuery, parse_tags, post_matches_filter  # noqa: E402
 from ..services.search import SearchController  # noqa: E402
 from ..sources import SourceRegistry  # noqa: E402
 from .grid import PostGrid  # noqa: E402
@@ -61,6 +61,9 @@ class DiscoverPage(Gtk.Box):
         self._has_more = False
         self._page = 1
         self._query = SearchQuery(safe=settings.get("safe_search", True))
+        self._result_posts: list[Post] = []
+        self._filter_timeout_id = 0
+        self._filter_syncing = False
         self._suggest_generation = 0
         self._suggest_timeout_id = 0
 
@@ -90,6 +93,7 @@ class DiscoverPage(Gtk.Box):
         self._stack.set_visible_child_name("loading")
 
         self._refresh_source_model()
+        self._sync_filter_entry()
         self._sync_safe_button(settings.get("safe_search", True))
         self._sync_sort()
         self._build_query_chips()
@@ -164,6 +168,25 @@ class DiscoverPage(Gtk.Box):
         filter_row.append(self.count_label)
         panel.append(filter_row)
 
+        self.filter_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.filter_row.set_visible(False)
+        filter_label = Gtk.Label(label="Filter")
+        filter_label.add_css_class("dim-label")
+        filter_label.set_valign(Gtk.Align.CENTER)
+        self.filter_row.append(filter_label)
+        self.filter_entry = Gtk.SearchEntry()
+        self.filter_entry.add_css_class("filter-entry")
+        self.filter_entry.set_placeholder_text("Filter this source by tags (comma separated)")
+        self.filter_entry.set_tooltip_text(
+            "Show only results containing every tag, separated by commas. "
+            "This filter works per source, not for “All sources”."
+        )
+        self.filter_entry.set_hexpand(True)
+        self.filter_entry.connect("search-changed", self._on_filter_changed)
+        self.filter_entry.connect("activate", self._apply_filter_now)
+        self.filter_row.append(self.filter_entry)
+        panel.append(self.filter_row)
+
         self.query_chips = Gtk.FlowBox()
         self.query_chips.set_selection_mode(Gtk.SelectionMode.NONE)
         self.query_chips.set_min_children_per_line(1)
@@ -200,9 +223,9 @@ class DiscoverPage(Gtk.Box):
         icon.set_pixel_size(52)
         icon.add_css_class("dim-label")
         box.append(icon)
-        title = Gtk.Label(label="No artwork found")
-        title.add_css_class("big-title")
-        box.append(title)
+        self.empty_title = Gtk.Label(label="No artwork found")
+        self.empty_title.add_css_class("big-title")
+        box.append(self.empty_title)
         self.empty_description = Gtk.Label(
             label="Try fewer tags, a different spelling, or browse another source."
         )
@@ -288,8 +311,11 @@ class DiscoverPage(Gtk.Box):
         return self._source_id
 
     def set_source(self, source_id: str, *, run: bool = False) -> None:
+        if source_id != self._source_id:
+            self._persist_filter()
         self._source_id = source_id
         self._sync_source_drop()
+        self._sync_filter_entry()
         self._update_empty_suggestions()
         if run:
             self.run_search(reset=True)
@@ -299,6 +325,7 @@ class DiscoverPage(Gtk.Box):
         if self._source_id != "all" and self._source_id not in enabled:
             self._source_id = "all"
         self._refresh_source_model()
+        self._sync_filter_entry()
         self._update_empty_suggestions()
 
     def focus_search(self) -> None:
@@ -335,6 +362,7 @@ class DiscoverPage(Gtk.Box):
             self._page = 1
             self._query = SearchQuery(text=text, page=1, limit=limit, safe=safe, sort=sort)
             self._has_more = False
+            self._result_posts = []
             self.grid.clear()
         else:
             if self._loading or not self._has_more:
@@ -381,24 +409,20 @@ class DiscoverPage(Gtk.Box):
         if not self._loading:
             return
         self._loading = False
-        before = self.grid.count
+        before_raw = len(self._result_posts)
         self._has_more = has_more
         if posts:
-            self.grid.append(posts)
+            self._result_posts.extend(posts)
+        visible = [post for post in posts if self._post_matches_filter(post)]
+        if visible:
+            self.grid.append(visible)
         self.grid.set_state(loading=False, has_more=has_more)
-        if self._query.page > 1 and self.grid.count == before:
+        if self._query.page > 1 and len(self._result_posts) == before_raw:
             # A page made entirely of duplicates; stop rather than hammering
             # the source while the user is at the bottom of the grid.
             self._has_more = False
             self.grid.set_state(has_more=False)
-        count = self.grid.count
-        self.count_label.set_text(f"{count} artwork{'s' if count != 1 else ''}")
-        if self.grid.count > 0:
-            self._stack.set_visible_child_name("grid")
-        elif errors:
-            self._show_error(errors[0])
-        else:
-            self._stack.set_visible_child_name("empty")
+        self._update_result_state(errors=errors)
         if errors:
             self.on_warning(errors[0] if len(errors) == 1 else f"{len(errors)} sources could not be reached.")
             log.warning("Search completed with errors: %s", " | ".join(errors))
@@ -410,15 +434,108 @@ class DiscoverPage(Gtk.Box):
         self._loading = False
         self.grid.set_state(loading=False, has_more=False)
         log.warning("Search failed: %s", message)
-        if self.grid.count == 0:
+        if not self._result_posts:
             self._show_error(message)
         else:
             self.on_warning(message)
+            self._update_result_state()
 
     def _on_finished(self) -> None:
         self._loading = False
         self.search_button.set_sensitive(True)
         self.grid.set_state(loading=False)
+        if self.grid.count == 0 and not self._result_posts:
+            self.count_label.set_text("")
+
+    def _update_result_state(self, errors: list[str] | None = None) -> None:
+        total = len(self._result_posts)
+        shown = self.grid.count
+        filtering = self._filter_active()
+        if filtering and total:
+            self.count_label.set_text(f"{shown} of {total} artwork{'s' if total != 1 else ''}")
+        else:
+            self.count_label.set_text(f"{shown} artwork{'s' if shown != 1 else ''}")
+
+        if shown > 0:
+            self._stack.set_visible_child_name("grid")
+            return
+        if total > 0 and filtering:
+            self.empty_title.set_text("No artwork matches this filter")
+            self.empty_description.set_text(
+                "No loaded results contain all of the filter tags. Clear or change the filter."
+            )
+            self._stack.set_visible_child_name("empty")
+            return
+        if errors and not total:
+            self._show_error(errors[0])
+            return
+        if self._loading:
+            self._stack.set_visible_child_name("loading")
+            return
+        self.empty_title.set_text("No artwork found")
+        self.empty_description.set_text(
+            "Try fewer tags, a different spelling, or browse another source."
+        )
+        self._stack.set_visible_child_name("empty")
+
+    # -- per-source filter ----------------------------------------------
+    def _current_filter_text(self) -> str:
+        if self._source_id == "all":
+            return ""
+        return self.filter_entry.get_text()
+
+    def _filter_active(self) -> bool:
+        return bool(self._current_filter_text().strip())
+
+    def _post_matches_filter(self, post: Post) -> bool:
+        return post_matches_filter(post, self._current_filter_text())
+
+    def _persist_filter(self) -> None:
+        if self._source_id == "all":
+            return
+        self.settings.set_source_filter(self._source_id, self.filter_entry.get_text())
+
+    def _sync_filter_entry(self) -> None:
+        enabled = self._source_id != "all"
+        self.filter_row.set_visible(enabled)
+        self._filter_syncing = True
+        try:
+            self.filter_entry.set_text(
+                self.settings.get_source_filter(self._source_id) if enabled else ""
+            )
+        finally:
+            self._filter_syncing = False
+
+    def _on_filter_changed(self, _entry) -> None:
+        if self._filter_syncing:
+            return
+        if self._filter_timeout_id:
+            GLib.source_remove(self._filter_timeout_id)
+        self._filter_timeout_id = GLib.timeout_add(320, self._apply_filter_debounced)
+
+    def _apply_filter_debounced(self):
+        self._filter_timeout_id = 0
+        self._persist_filter()
+        self._apply_filter()
+        return False
+
+    def _apply_filter_now(self, *_args) -> None:
+        if self._filter_timeout_id:
+            GLib.source_remove(self._filter_timeout_id)
+            self._filter_timeout_id = 0
+        self._persist_filter()
+        self._apply_filter()
+
+    def _apply_filter(self) -> None:
+        if self._source_id == "all":
+            return
+        self.grid.clear()
+        if self._result_posts:
+            visible = [post for post in self._result_posts if self._post_matches_filter(post)]
+            if visible:
+                self.grid.append(visible)
+        self.grid.set_state(loading=self._loading, has_more=self._has_more)
+        self._update_result_state()
 
     def _show_error(self, message: str) -> None:
         self.error_label.set_text(message)
@@ -518,7 +635,10 @@ class DiscoverPage(Gtk.Box):
         if index < 0 or index >= len(self._source_ids):
             return
         source_id = self._source_ids[index]
+        if source_id != self._source_id:
+            self._persist_filter()
         self._source_id = source_id
+        self._sync_filter_entry()
         self._update_empty_suggestions()
         self.on_source_changed(source_id)
         self.run_search(reset=True)

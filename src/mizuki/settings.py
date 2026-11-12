@@ -25,6 +25,7 @@ DEFAULTS: dict[str, Any] = {
     "color_scheme": "system",
     "download_dir": str(config.DEFAULT_DOWNLOAD_DIR),
     "recent_searches": [],
+    "source_filters": {},
 }
 
 VALID_GRID_SIZES = {"compact", "comfortable", "large"}
@@ -91,6 +92,15 @@ class Settings:
         download_dir = data.get("download_dir")
         if not isinstance(download_dir, str) or not download_dir.strip():
             data["download_dir"] = DEFAULTS["download_dir"]
+        source_filters = data.get("source_filters")
+        if not isinstance(source_filters, dict):
+            data["source_filters"] = {}
+        else:
+            data["source_filters"] = {
+                str(source_id): str(value)[:500]
+                for source_id, value in source_filters.items()
+                if isinstance(source_id, str) and isinstance(value, str) and value.strip()
+            }
 
     # -- access ----------------------------------------------------------
     def get(self, key: str, default: Any = None) -> Any:
@@ -142,6 +152,21 @@ class Settings:
         recent = [item for item in self.get("recent_searches", []) if item.lower() != text.lower()]
         recent.insert(0, text)
         self.set("recent_searches", recent[:12])
+
+    def get_source_filter(self, source_id: str) -> str:
+        filters = self.get("source_filters", {})
+        if not isinstance(filters, dict):
+            return ""
+        return str(filters.get(source_id, ""))
+
+    def set_source_filter(self, source_id: str, value: str) -> None:
+        filters = dict(self.get("source_filters", {}))
+        value = str(value or "").strip()[:500]
+        if value:
+            filters[source_id] = value
+        else:
+            filters.pop(source_id, None)
+        self.set("source_filters", filters)
 
     def save(self) -> None:
         try:

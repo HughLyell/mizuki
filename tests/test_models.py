@@ -9,7 +9,9 @@ from mizuki.models import (
     Post,
     extension_from_url,
     normalize_rating,
+    parse_filter_tags,
     parse_tags,
+    post_matches_filter,
     sanitize_component,
 )
 
@@ -101,6 +103,29 @@ class RoundTripTests(unittest.TestCase):
         self.assertEqual(post.id, "1")
         self.assertEqual(post.tags, ())
         self.assertEqual(post.rating, SAFE)
+
+
+class FilterTests(unittest.TestCase):
+    def test_parse_filter_tags(self) -> None:
+        self.assertEqual(parse_filter_tags(" 1girl, blue_sky ,, -monochrome "),
+                         ["1girl", "blue sky", "-monochrome"])
+        self.assertEqual(parse_filter_tags(""), [])
+        self.assertEqual(parse_filter_tags("tag, tag"), ["tag"])
+
+    def test_matches_all_tags(self) -> None:
+        post = make_post(tags=("1girl", "blue_sky", "landscape"))
+        self.assertTrue(post_matches_filter(post, "1girl, blue sky"))
+        self.assertTrue(post_matches_filter(post, "LANDSCAPE"))
+        self.assertFalse(post_matches_filter(post, "1girl, no_match"))
+        self.assertFalse(post_matches_filter(post, "blue_sky, 1girl, city"))
+
+    def test_empty_filter_matches(self) -> None:
+        self.assertTrue(post_matches_filter(make_post(), ""))
+        self.assertTrue(post_matches_filter(make_post(), " , "))
+
+    def test_zerochan_space_tags(self) -> None:
+        post = make_post(tags=("genshin impact", "landscape"))
+        self.assertTrue(post_matches_filter(post, "genshin_impact"))
 
 
 if __name__ == "__main__":

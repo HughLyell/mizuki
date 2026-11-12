@@ -19,8 +19,12 @@ browser.
   out of the box; add your own with a single Python file.
 - **Tag search** — combine tags, use `-tag` exclusions, and get tag
   autocomplete for Danbooru-based sources.
+- **Per-source filters** — each individual source can remember its own
+  comma-separated tag filter to narrow loaded results. The filter is hidden for
+  “All sources”.
 - **Source filtering** — browse one source or merge results from every enabled
-  source. Sources can be toggled in Preferences.
+  source. Sources can be toggled in Preferences. Selecting a source in the
+  sidebar immediately searches that source.
 - **SFW controls** — safe search is on by default, filters at the source, and
   requires confirmation before it can be disabled. Sources without a safe
   subset stay filtered. Sensitive thumbnails are covered by default.
@@ -156,6 +160,10 @@ Mizuki is deliberately small and native:
 - Separate tags with spaces: `1girl landscape sky` (AND).
 - Prefix a tag with `-` to exclude it on boorus that support it: `landscape -monochrome`.
 - Quote a phrase to keep it together: `"blue sky"`.
+- Use the **Filter** field under the source selector to narrow the currently
+  loaded results for that one source. Separate tags with commas: `1girl, smile`.
+  Every tag must match. The filter is hidden when “All sources” is selected and
+  each source remembers its own filter.
 - Click any tag chip in the detail view to search for it.
 - Popular tags in the sidebar are one-click searches for the selected source.
 - `rating:` and `order:` metatags typed by the user are stripped so the app's
