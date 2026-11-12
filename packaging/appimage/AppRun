@@ -1,0 +1,39 @@
+#!/bin/sh
+# AppRun wrapper for the Mizuki AppImage.
+set -eu
+
+HERE="$(dirname "$(readlink -f "$0")")"
+export APPDIR="$HERE"
+
+# GTK/libadwaita resources bundled by linuxdeploy-plugin-gtk.
+if [ -d "$HERE/apprun-hooks" ]; then
+    for hook in "$HERE"/apprun-hooks/*.sh; do
+        [ -f "$hook" ] && . "$hook"
+    done
+fi
+
+export MIZUKI_DATA_DIR="$HERE/usr/share/mizuki/data"
+export PATH="$HERE/usr/bin:${PATH:-/usr/bin:/bin}"
+export XDG_DATA_DIRS="$HERE/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+
+# Frozen Python cannot rely on the host's OpenSSL default CA path.
+if [ -f "$HERE/usr/share/mizuki/ca-certificates.crt" ]; then
+    export SSL_CERT_FILE="$HERE/usr/share/mizuki/ca-certificates.crt"
+fi
+
+# libadwaita owns the color scheme; forcing a GTK theme here creates a
+# mismatched light sidebar with dark app content.
+unset GTK_THEME
+
+# Use the native Wayland backend when available; X11 remains the fallback.
+if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    export GDK_BACKEND=wayland
+else
+    export GDK_BACKEND=x11
+fi
+
+# The PyInstaller GI hook and linuxdeploy can disagree about where typelibs
+# live. Keep both locations on the search path so Gtk/Adw namespaces resolve.
+export GI_TYPELIB_PATH="$HERE/usr/bin/_internal/gi_typelibs:$HERE/usr/lib/girepository-1.0${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+
+exec "$HERE/usr/bin/mizuki" "$@"
