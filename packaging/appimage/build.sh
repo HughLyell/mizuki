@@ -62,11 +62,14 @@ while IFS= read -r -d '' typelib; do
 done < <(find /usr/lib -path '*/girepository-1.0/*.typelib' -print0)
 cp "$ROOT/packaging/appimage/AppRun" "$APPDIR/AppRun"
 chmod +x "$APPDIR/AppRun"
+mkdir -p "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/256x256/apps"
 cp "$ROOT/data/$APP_ID.desktop" "$APPDIR/$APP_ID.desktop"
+cp "$ROOT/data/$APP_ID.desktop" "$APPDIR/usr/share/applications/$APP_ID.desktop"
 if command -v rsvg-convert >/dev/null 2>&1; then
     rsvg-convert -w 256 -h 256 \
         "$ROOT/data/icons/hicolor/scalable/apps/$APP_ID.svg" \
         -o "$APPDIR/$APP_ID.png"
+    cp "$APPDIR/$APP_ID.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/$APP_ID.png"
 else
     cp "$ROOT/data/icons/hicolor/scalable/apps/$APP_ID.svg" "$APPDIR/$APP_ID.svg"
 fi
@@ -111,7 +114,7 @@ download \
 
 OUTPUT="$DIST/Mizuki-${VERSION}-x86_64.AppImage"
 rm -f "$OUTPUT"
-"$APPIMAGETOOL" --appimage-extract-and-run "$APPDIR" "$OUTPUT"
+ARCH=x86_64 "$APPIMAGETOOL" --appimage-extract-and-run "$APPDIR" "$OUTPUT"
 chmod +x "$OUTPUT"
 
 echo "Built $OUTPUT"
