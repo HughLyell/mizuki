@@ -34,6 +34,7 @@ class SettingsTests(unittest.TestCase):
     def test_defaults(self) -> None:
         settings = Settings(self.path)
         self.assertTrue(settings.get("safe_search"))
+        self.assertTrue(settings.get("sidebar_visible"))
         self.assertEqual(settings.get("grid_size"), "comfortable")
         self.assertFalse(self.path.exists())
 
@@ -71,6 +72,15 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(len(recent), 12)
         self.assertEqual(recent[0], "TAG 5")
         self.assertEqual(sum(1 for item in recent if item.lower() == "tag 5"), 1)
+
+    def test_remove_recent_search(self) -> None:
+        settings = Settings(self.path)
+        settings.add_recent_search("landscape")
+        settings.add_recent_search("Zenless Zone Zero")
+        settings.remove_recent_search("landscape")
+        self.assertEqual(settings.get("recent_searches"), ["Zenless Zone Zero"])
+        settings.remove_recent_search("missing")
+        self.assertEqual(settings.get("recent_searches"), ["Zenless Zone Zero"])
 
     def test_unknown_key_rejected(self) -> None:
         settings = Settings(self.path)

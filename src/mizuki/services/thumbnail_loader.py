@@ -1,4 +1,4 @@
-"""Asynchronous thumbnail loading with a small memory and disk cache."""
+"""Asynchronous image loading with a small memory and disk cache."""
 
 from __future__ import annotations
 
@@ -22,14 +22,18 @@ log = logging.getLogger(__name__)
 
 TextureCallback = Callable[[object | None], None]
 
-MAX_THUMB_BYTES = 400 * 1024 * 1024  # thumbnail cache ceiling
+MAX_THUMB_BYTES = 400 * 1024 * 1024  # image cache ceiling
+
+
+def _discard_texture(_texture) -> None:
+    """Callback for prefetches that only need the image cached."""
 
 
 class ThumbnailLoader:
     """Load remote images off the main thread and return ``Gdk.Texture`` objects.
 
     Textures are cached in an LRU map. Disk caching avoids re-downloading
-    thumbnails when browsing the same tags again.
+    thumbnails and opened previews when browsing or revisiting the same tags.
     """
 
     def __init__(
@@ -80,6 +84,20 @@ class ThumbnailLoader:
                 return
             self._inflight[url] = [callback]
         self._executor.submit(self._fetch, url, referer, store_disk)
+
+    def prefetch(
+        self,
+        url: str,
+        *,
+        referer: str = "",
+        store_disk: bool = True,
+    ) -> None:
+        """Warm the cache without blocking or keeping a caller callback."""
+        if not url:
+            return
+        if self.cached(url) is not None:
+            return
+        self.load(url, _discard_texture, referer=referer, store_disk=store_disk)
 
     def shutdown(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)
@@ -141,7 +159,7 @@ class ThumbnailLoader:
 
     # -- maintenance -----------------------------------------------------
     def prune_disk_cache(self, max_bytes: int = MAX_THUMB_BYTES) -> int:
-        """Delete the oldest cached thumbnails if the cache exceeds ``max_bytes``."""
+        """Delete the oldest cached images if the cache exceeds ``max_bytes``."""
         files: list[tuple[float, int, Path]] = []
         total = 0
         try:

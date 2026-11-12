@@ -173,7 +173,7 @@ class ZerochanSource(Source):
     def __init__(self) -> None:
         self._supplement_cache: dict[str, tuple[float, list[Post], str]] = {}
         self._resolution_cache: dict[str, tuple[float, list[str]]] = {}
-        self._html_cache: dict[str, tuple[float, str]] = {}
+        self._html_cache: dict[str, tuple[float, str, str]] = {}
         self._cache_lock = threading.Lock()
 
     def headers(self) -> dict[str, str]:
@@ -269,8 +269,12 @@ class ZerochanSource(Source):
         params: list[str] = []
         if query.page > 1:
             params.append(f"p={query.page}")
-        if query.sort == "score":
+        if query.sort == "newest":
+            params.append("s=id")
+        elif query.sort == "score":
             params.extend(["s=fav", "t=0"])
+        elif query.sort == "random":
+            params.append("s=random")
         if params:
             return f"{BASE_URL}{path}?{'&'.join(params)}"
         return f"{BASE_URL}{path}"
@@ -291,18 +295,25 @@ class ZerochanSource(Source):
                 return [[terms[0]], words]
         return [terms]
 
-    def _fetch_html(self, url: str, timeout: int = 25) -> str:
+    def _fetch_page(self, url: str, timeout: int = 25) -> tuple[str, str]:
         now = time.time()
         with self._cache_lock:
             cached = self._html_cache.get(url)
             if cached and now - cached[0] < 60:
-                return cached[1]
-        html = net.get_text(url, headers=self.headers(), timeout=timeout)
+                return cached[1], cached[2]
+        html, final_url = net.get_text_with_url(url, headers=self.headers(), timeout=timeout)
         with self._cache_lock:
             if len(self._html_cache) > 80:
                 self._html_cache.clear()
-            self._html_cache[url] = (now, html)
-        return html
+            self._html_cache[url] = (now, html, final_url)
+        return html, final_url
+
+    def _fetch_html(self, url: str, timeout: int = 25) -> str:
+        return self._fetch_page(url, timeout=timeout)[0]
+
+    @staticmethod
+    def _requested_query(url: str) -> str:
+        return urllib.parse.urlparse(url).query
 
     @staticmethod
     def _gallery_fragment(html: str) -> str:
@@ -341,8 +352,9 @@ class ZerochanSource(Source):
         corrected_tag = ""
         no_results_notice = ""
         for index, tags in enumerate(variants):
+            requested_url = self._url_for_tags(tags, query)
             try:
-                html = self._fetch_html(self._url_for_tags(tags, query))
+                html, final_url = self._fetch_page(requested_url)
             except net.NetworkError as exc:
                 if exc.status != 404:
                     raise SourceError(str(exc)) from exc
@@ -359,6 +371,26 @@ class ZerochanSource(Source):
                     else "Zerochan has no tag matching this search."
                 )
                 continue
+            requested_query = self._requested_query(requested_url)
+            if requested_query:
+                requested_parts = urllib.parse.urlparse(requested_url)
+                final_parts = urllib.parse.urlparse(final_url)
+                if (
+                    final_parts.path != requested_parts.path
+                    or final_parts.query != requested_query
+                ):
+                    canonical = urllib.parse.urlunparse(
+                        (
+                            final_parts.scheme,
+                            final_parts.netloc,
+                            final_parts.path,
+                            "",
+                            requested_query,
+                            "",
+                        )
+                    )
+                    if canonical != final_url:
+                        html, final_url = self._fetch_page(canonical)
             if "Just a moment" in html and "cloudflare" in html.lower():
                 raise SourceError("Zerochan is currently blocking automated requests. Try again later.")
             try:
@@ -393,7 +425,7 @@ class ZerochanSource(Source):
             with self._cache_lock:
                 self._resolution_cache[resolution_key] = (now, list(chosen_tags))
 
-        has_more = bool(posts)
+        has_more = bool(posts) and query.sort != "random"
         notice = ""
         member_only = "members only" in html.lower()
         supplement_tag = corrected_tag or (chosen_tags[0] if len(chosen_tags) == 1 else "")

@@ -5,7 +5,7 @@ from __future__ import annotations
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gdk, Gtk, Pango  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
 from ..models import Post  # noqa: E402
 
@@ -34,6 +34,7 @@ class ImageCard(Gtk.Box):
         self._favorite = favorite
         self._loaded = False
         self._error_shown = False
+        self._prefetch_timeout_id = 0
         self._width, self._height = size
 
         self.add_css_class("image-card")
@@ -70,7 +71,7 @@ class ImageCard(Gtk.Box):
         self.picture.set_overflow(Gtk.Overflow.HIDDEN)
 
         # A non-scrolling viewport clips oversized images and, importantly,
-        # stops a tall image's natural size from inflating the FlowBox column.
+        # stops a tall image's natural size from inflating the gallery row.
         self._viewport = Gtk.ScrolledWindow()
         self._viewport.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.NEVER)
         self._viewport.set_propagate_natural_width(False)
@@ -123,6 +124,11 @@ class ImageCard(Gtk.Box):
         motion.connect("enter", self._on_pointer_enter)
         motion.connect("leave", self._on_pointer_leave)
         self.add_controller(motion)
+
+        focus = Gtk.EventControllerFocus()
+        focus.connect("enter", lambda *_args: self._schedule_prefetch())
+        focus.connect("leave", lambda *_args: self._cancel_prefetch())
+        self.add_controller(focus)
 
         click = Gtk.GestureClick()
         click.set_button(1)
@@ -291,17 +297,44 @@ class ImageCard(Gtk.Box):
     def _on_pointer_enter(self, *_args) -> None:
         self._info.set_reveal_child(True)
         self.set_cursor_from_name("pointer")
+        self._schedule_prefetch()
 
     def _on_pointer_leave(self, *_args) -> None:
         self._info.set_reveal_child(False)
         self.set_cursor_from_name("default")
+        self._cancel_prefetch()
+
+    def _schedule_prefetch(self) -> None:
+        if not self.post.preview_url or self.post.preview_url == self.post.thumb_url:
+            return
+        if self.loader.cached(self.post.preview_url) is not None:
+            return
+        self._cancel_prefetch()
+        self._prefetch_timeout_id = GLib.timeout_add(180, self._prefetch_preview)
+
+    def _prefetch_preview(self):
+        self._prefetch_timeout_id = 0
+        if self.post.preview_url:
+            self.loader.prefetch(
+                self.post.preview_url,
+                referer=self.post.referer,
+                store_disk=True,
+            )
+        return False
+
+    def _cancel_prefetch(self) -> None:
+        if self._prefetch_timeout_id:
+            GLib.source_remove(self._prefetch_timeout_id)
+            self._prefetch_timeout_id = 0
 
     def _on_clicked(self, gesture, _n_press, _x, _y) -> None:
         if gesture.get_button() == 1:
+            self._cancel_prefetch()
             self.on_activate(self.post)
 
     def _on_key_pressed(self, _controller, keyval, _keycode, _state) -> bool:
         if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_space):
+            self._cancel_prefetch()
             self.on_activate(self.post)
             return True
         return False

@@ -46,17 +46,25 @@ class MoebooruSource(Source):
         return tags
 
     def search(self, query: SearchQuery) -> SourcePage:
-        tags = self.query_tags(query)
-        phrase = self.fallback_phrase_tags(query)
-        page = self._search_tags(query, tags)
-        if not page.posts and phrase is not None and [tag.lower() for tag in tags] != [tag.lower() for tag in phrase]:
+        last_page: SourcePage | None = None
+        last_error: SourceError | None = None
+        for tags in self.search_variants(query):
+            if self.max_tags and len(tags) > self.max_tags:
+                continue
             try:
-                alternate = self._search_tags(query, phrase)
-            except SourceError:
+                page = self._search_tags(query, tags)
+            except SourceError as exc:
+                last_error = exc
+                continue
+            last_page = page
+            if page.posts:
+                self.remember_variant(query, tags)
                 return page
-            if alternate.posts:
-                return alternate
-        return page
+        if last_page is not None:
+            return last_page
+        if last_error is not None:
+            raise last_error
+        raise SourceError(f"{self.name} allows at most 6 tags per search.")
 
     def _search_tags(self, query: SearchQuery, tags_override: list[str]) -> SourcePage:
         limit = max(1, min(query.limit, 100))

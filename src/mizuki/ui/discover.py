@@ -11,7 +11,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from ..models import Post, SearchQuery, parse_tags, post_matches_filter  # noqa: E402
+from ..models import Post, SearchQuery, parse_tags, post_matches_filter, split_comma_groups  # noqa: E402
 from ..services.search import SearchController  # noqa: E402
 from ..sources import SourceRegistry  # noqa: E402
 from .grid import PostGrid  # noqa: E402
@@ -752,7 +752,8 @@ class DiscoverPage(Gtk.Box):
             source = self.registry.get(self._source_id)
             if source is not None:
                 return source.display_tags(text)
-        return parse_tags(text)
+        groups = split_comma_groups(text)
+        return groups if groups is not None else parse_tags(text)
 
     def _build_query_chips(self) -> None:
         child = self.query_chips.get_first_child()
@@ -777,11 +778,14 @@ class DiscoverPage(Gtk.Box):
     def _remove_tag(self, _button, tag: str) -> None:
         remaining = [item for item in self._display_tags() if item != tag]
         source = self.registry.get(self._source_id) if self._source_id != "all" else None
-        text = source.join_tags(remaining) if source is not None else " ".join(remaining)
+        text = source.join_tags(remaining) if source is not None else ", ".join(remaining)
         self.search_entry.set_text(text)
         self.run_search(reset=True)
 
     # -- empty state suggestions -----------------------------------------
+    def refresh_recent_searches(self) -> None:
+        self._update_empty_suggestions()
+
     def _update_empty_suggestions(self) -> None:
         for flow in (self.empty_chips, self.recent_chips):
             child = flow.get_first_child()

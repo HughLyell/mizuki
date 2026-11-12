@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 DEFAULTS: dict[str, Any] = {
     "safe_search": True,
     "blur_nsfw": True,
+    "sidebar_visible": True,
     "source": "danbooru",
     "enabled_sources": ["danbooru", "safebooru", "konachan", "yandere", "zerochan"],
     "sort": "newest",
@@ -67,7 +68,7 @@ class Settings:
 
     def _validate(self) -> None:
         data = self._data
-        for key in ("safe_search", "blur_nsfw"):
+        for key in ("safe_search", "blur_nsfw", "sidebar_visible"):
             data[key] = bool(data.get(key, DEFAULTS[key]))
         if data.get("grid_size") not in VALID_GRID_SIZES:
             data["grid_size"] = DEFAULTS["grid_size"]
@@ -152,6 +153,16 @@ class Settings:
         recent = [item for item in self.get("recent_searches", []) if item.lower() != text.lower()]
         recent.insert(0, text)
         self.set("recent_searches", recent[:12])
+
+    def remove_recent_search(self, text: str) -> None:
+        text = " ".join(str(text or "").split())
+        if not text:
+            return
+        recent = [
+            item for item in self.get("recent_searches", [])
+            if item.lower() != text.lower()
+        ]
+        self.set("recent_searches", recent)
 
     def get_source_filter(self, source_id: str) -> str:
         filters = self.get("source_filters", {})

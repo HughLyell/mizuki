@@ -72,6 +72,17 @@ class DanbooruTagTests(unittest.TestCase):
         self.assertEqual(source.search_tags(query), ["sky"])
         self.assertFalse(source.supports_nsfw)
 
+    def test_safebooru_server_sort_tags(self) -> None:
+        source = SafebooruSource()
+        self.assertIn(
+            "sort:score:desc",
+            source.search_tags(SearchQuery(text="landscape", sort="score")),
+        )
+        self.assertIn(
+            "sort:random",
+            source.search_tags(SearchQuery(text="landscape", sort="random")),
+        )
+
     def test_konachan_safe_rating(self) -> None:
         self.assertIn("rating:safe", KonachanSource().search_tags(SearchQuery(text="sky", safe=True)))
 
@@ -86,6 +97,30 @@ class DanbooruTagTests(unittest.TestCase):
         self.assertEqual(source.fallback_phrase_tags(query), ["Zenless_Zone_Zero"])
         self.assertIsNone(source.fallback_phrase_tags(SearchQuery(text="landscape")))
         self.assertIsNone(source.fallback_phrase_tags(SearchQuery(text="landscape, sky")))
+
+    def test_comma_groups_become_explicit_tags(self) -> None:
+        source = DanbooruSource()
+        query = SearchQuery(text="Hatsune Miku, landscape")
+        self.assertEqual(source.query_tags(query), ["Hatsune_Miku", "landscape"])
+        self.assertEqual(
+            source.display_tags("Hatsune Miku, landscape"),
+            ["Hatsune Miku", "landscape"],
+        )
+        self.assertEqual(
+            source.join_tags(["Hatsune Miku", "landscape"]),
+            "Hatsune Miku, landscape",
+        )
+
+    def test_two_word_phrase_is_tried_first(self) -> None:
+        source = DanbooruSource()
+        variants = source.search_variants(SearchQuery(text="hatsune miku"))
+        self.assertEqual(variants[0], ["hatsune_miku"])
+        self.assertEqual(variants[1], ["hatsune", "miku"])
+
+    def test_exclusions_do_not_become_phrase(self) -> None:
+        source = DanbooruSource()
+        variants = source.search_variants(SearchQuery(text="landscape -monochrome"))
+        self.assertEqual(variants, [["landscape", "-monochrome"]])
 
 
 class ZerochanTests(unittest.TestCase):

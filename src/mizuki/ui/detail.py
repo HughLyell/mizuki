@@ -30,6 +30,7 @@ class ImageDetailDialog(Adw.Dialog):
         self.on_favorite = on_favorite
         self.on_tag_activate = on_tag_activate
         self._preview_attempts = 0
+        self._thumbnail_texture = None
 
         self.set_content_width(1140)
         self.set_content_height(760)
@@ -80,6 +81,7 @@ class ImageDetailDialog(Adw.Dialog):
         self.toasts.set_child(root)
         self.set_child(self.toasts)
 
+        self._seed_thumbnail()
         self._load_preview()
 
     # -- construction ----------------------------------------------------
@@ -247,6 +249,14 @@ class ImageDetailDialog(Adw.Dialog):
         return row
 
     # -- data ------------------------------------------------------------
+    def _seed_thumbnail(self) -> None:
+        if not self.post.thumb_url:
+            return
+        texture = self.loader.cached(self.post.thumb_url)
+        if texture is not None:
+            self._thumbnail_texture = texture
+            self._show_texture(texture)
+
     def _load_preview(self) -> None:
         url = self.post.preview_url or self.post.file_url or self.post.thumb_url
         if not url:
@@ -256,23 +266,38 @@ class ImageDetailDialog(Adw.Dialog):
             url,
             self._on_preview,
             referer=self.post.referer,
-            store_disk=False,
+            store_disk=True,
         )
+
+    def _show_texture(self, texture) -> None:
+        self.spinner.stop()
+        self.spinner.set_visible(False)
+        self.stage_error.set_visible(False)
+        self.picture.set_paintable(texture)
 
     def _on_preview(self, texture) -> None:
         if texture is not None:
-            self.spinner.stop()
-            self.spinner.set_visible(False)
-            self.picture.set_paintable(texture)
+            self._show_texture(texture)
             return
         self._preview_attempts += 1
-        if self._preview_attempts == 1 and self.post.thumb_url and self.post.thumb_url != self.post.preview_url:
+        if (
+            self._preview_attempts == 1
+            and self._thumbnail_texture is None
+            and self.post.thumb_url
+            and self.post.thumb_url != self.post.preview_url
+        ):
             self.loader.load(
                 self.post.thumb_url,
                 self._on_preview,
                 referer=self.post.referer,
-                store_disk=False,
+                store_disk=True,
             )
+            return
+        if self._thumbnail_texture is not None:
+            # Keep the instant thumbnail visible instead of replacing it with
+            # an error message when the larger preview cannot be fetched.
+            self.spinner.stop()
+            self.spinner.set_visible(False)
             return
         self._preview_failed("The full preview could not be loaded. Try opening the source page.")
 

@@ -113,6 +113,59 @@ headerbar.mizuki-header {
   background-color: alpha(@accent_bg_color, 0.16);
 }
 
+.recent-chip {
+  border-radius: 999px;
+  padding: 1px 2px 1px 0;
+  background-color: alpha(@accent_bg_color, 0.10);
+}
+
+.recent-chip-search {
+  border-radius: 999px 0 0 999px;
+  padding: 1px 3px 1px 9px;
+  min-height: 24px;
+  font-size: 11px;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
+.recent-chip-search:hover {
+  background-color: alpha(@accent_bg_color, 0.10);
+}
+
+.recent-chip-close {
+  border-radius: 999px;
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0;
+  margin: 1px 2px 1px 0;
+  opacity: 0.62;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
+.recent-chip-close:hover {
+  opacity: 1;
+  background-color: alpha(@destructive_bg_color, 0.18);
+  color: @destructive_color;
+}
+
+.recent-chip-close image {
+  -gtk-icon-size: 12px;
+}
+
+.sidebar-empty {
+  font-size: 11px;
+  opacity: 0.45;
+  padding: 2px 0;
+}
+
+.sidebar-toggle:checked {
+  background-color: alpha(@accent_bg_color, 0.14);
+  color: @accent_color;
+}
+
 /* ---------------------------------------------------------------- search */
 .search-entry {
   min-height: 46px;
@@ -198,10 +251,8 @@ headerbar.mizuki-header {
   background-color: transparent;
 }
 
-.image-grid > flowboxchild {
-  padding: 0;
+.gallery-row {
   background-color: transparent;
-  border-radius: 16px;
 }
 
 .image-card {

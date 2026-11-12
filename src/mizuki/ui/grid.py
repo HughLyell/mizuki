@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -10,11 +12,21 @@ from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ..models import Post  # noqa: E402
 from .card import ImageCard  # noqa: E402
+from .gallery_layout import build_justified_rows  # noqa: E402
 
+log = logging.getLogger(__name__)
+
+GALLERY_GAP = 12
+GRID_SIDE_MARGIN = 24
+GRID_HORIZONTAL_MARGIN = GRID_SIDE_MARGIN * 2
+# .image-card has a 1px border on each side; size requests exclude CSS chrome.
+CARD_CHROME = 2
+
+# target row height, minimum row height, maximum row height
 GRID_SIZES: dict[str, tuple[int, int, int]] = {
-    "compact": (146, 204, 10),
-    "comfortable": (182, 254, 8),
-    "large": (226, 316, 6),
+    "compact": (180, 135, 235),
+    "comfortable": (235, 170, 300),
+    "large": (330, 245, 430),
 }
 
 MAX_POSTS = 240
@@ -43,8 +55,11 @@ class PostGrid(Gtk.ScrolledWindow):
         self.on_favorite = on_favorite
         self.on_load_more = on_load_more
         self.show_footer = show_footer
+        self._max_width = max_width
         self._cards: dict[str, ImageCard] = {}
         self._posts: list[Post] = []
+        self._rows: list[Gtk.Box] = []
+        self._layout_width = 0
         self._loading = False
         self._has_more = False
         self._size = settings.get("grid_size", "comfortable")
@@ -63,17 +78,14 @@ class PostGrid(Gtk.ScrolledWindow):
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
         outer.set_margin_top(18)
         outer.set_margin_bottom(28)
-        outer.set_margin_start(24)
-        outer.set_margin_end(24)
+        outer.set_margin_start(GRID_SIDE_MARGIN)
+        outer.set_margin_end(GRID_SIDE_MARGIN)
 
-        self.flow = Gtk.FlowBox()
+        self.flow = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=GALLERY_GAP)
         self.flow.add_css_class("image-grid")
-        self.flow.set_selection_mode(Gtk.SelectionMode.NONE)
-        self.flow.set_homogeneous(True)
         self.flow.set_valign(Gtk.Align.START)
         self.flow.set_halign(Gtk.Align.FILL)
-        self.flow.set_row_spacing(16)
-        self.flow.set_column_spacing(16)
+        self.flow.set_hexpand(True)
         outer.append(self.flow)
 
         self.footer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -99,6 +111,7 @@ class PostGrid(Gtk.ScrolledWindow):
         adjustment = self.get_vadjustment()
         adjustment.connect("value-changed", self._on_scrolled)
         self._sync_footer()
+        GLib.timeout_add(250, self._poll_width)
 
     # -- public API ------------------------------------------------------
     @property
@@ -110,12 +123,10 @@ class PostGrid(Gtk.ScrolledWindow):
         return list(self._posts)
 
     def clear(self) -> None:
-        child = self.flow.get_first_child()
-        while child is not None:
-            self.flow.remove(child)
-            child = self.flow.get_first_child()
+        self._clear_rows()
         self._cards.clear()
         self._posts.clear()
+        self._layout_width = 0
         self._loading = False
         self._has_more = False
         self._sync_footer()
@@ -125,24 +136,29 @@ class PostGrid(Gtk.ScrolledWindow):
         added: list[ImageCard] = []
         favorite_keys = {post.key for post in self.favorites.all()}
         blurred = bool(self.settings.get("blur_nsfw", True))
-        width, height, _ = GRID_SIZES[self._size]
+        target_height, _, _ = GRID_SIZES[self._size]
         for post in posts:
             if post.key in self._cards or len(self._posts) >= MAX_POSTS:
                 continue
+            tile_width = max(48, int(round(post.aspect_ratio * target_height)))
             card = ImageCard(
                 post,
                 self.loader,
-                size=(width, height),
+                size=(tile_width, target_height),
                 favorite=post.key in favorite_keys,
                 blur_nsfw=blurred,
                 on_activate=self.on_activate,
                 on_download=self.on_download,
                 on_favorite=self.on_favorite,
             )
-            self.flow.append(card)
+            card.set_hexpand(False)
+            card.set_halign(Gtk.Align.START)
+            card.set_valign(Gtk.Align.FILL)
             self._cards[post.key] = card
             self._posts.append(post)
             added.append(card)
+        if added:
+            self._relayout(force=True)
         self._sync_footer()
         return added
 
@@ -157,10 +173,23 @@ class PostGrid(Gtk.ScrolledWindow):
         if size not in GRID_SIZES:
             return
         self._size = size
-        self._apply_grid_size()
-        width, height, _ = GRID_SIZES[size]
-        for card in self._cards.values():
-            card.set_tile_size(width, height)
+        self._relayout(force=True)
+
+    def request_relayout(self) -> None:
+        self._relayout(force=True)
+
+    def prepare_for_width(self, allocated_width: int) -> None:
+        """Shrink tiles before the sidebar expands into the content area.
+
+        ``allocated_width`` is the PostGrid's future allocated width. The cards'
+        size requests are part of the content's minimum width, so if the sidebar
+        is revealed first, the window can grow instead of letting the gallery
+        shrink. The internal horizontal margin is subtracted here to keep the
+        grid's minimum size consistent with its reflow width.
+        """
+        if allocated_width > 0:
+            content_width = max(240, int(allocated_width) - GRID_HORIZONTAL_MARGIN)
+            self._relayout(content_width, force=True)
 
     def refresh_favorites(self) -> None:
         favorite_keys = {post.key for post in self.favorites.all()}
@@ -182,9 +211,71 @@ class PostGrid(Gtk.ScrolledWindow):
 
     # -- internals -------------------------------------------------------
     def _apply_grid_size(self) -> None:
-        _, _, columns = GRID_SIZES[self._size]
-        self.flow.set_min_children_per_line(2)
-        self.flow.set_max_children_per_line(columns)
+        self._relayout(force=True)
+
+    def _relayout(self, width: int | None = None, *, force: bool = False) -> None:
+        if width is None:
+            width = self._available_width()
+        width = max(240, int(width))
+        if not force and width == self._layout_width:
+            return
+        target, minimum, maximum = GRID_SIZES[self._size]
+        rows = build_justified_rows(
+            self._posts,
+            width,
+            target,
+            gap=GALLERY_GAP,
+            min_height=minimum,
+            max_height=maximum,
+            chrome=CARD_CHROME,
+        )
+
+        self._clear_rows()
+        for row_layout in rows:
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=GALLERY_GAP)
+            row.add_css_class("gallery-row")
+            row.set_halign(Gtk.Align.START)
+            row.set_valign(Gtk.Align.START)
+            for tile in row_layout.tiles:
+                card = self._cards.get(tile.post.key)
+                if card is None:
+                    continue
+                card.set_tile_size(tile.width, tile.height)
+                card.set_hexpand(False)
+                card.set_halign(Gtk.Align.START)
+                card.set_valign(Gtk.Align.FILL)
+                row.append(card)
+            self.flow.append(row)
+            self._rows.append(row)
+        self._layout_width = width
+
+    def _clear_rows(self) -> None:
+        for card in self._cards.values():
+            if card.get_parent() is not None:
+                card.unparent()
+        for row in self._rows:
+            if row.get_parent() is self.flow:
+                self.flow.remove(row)
+        self._rows.clear()
+
+    def _available_width(self) -> int:
+        # Use the ScrolledWindow's allocated width rather than the child grid's
+        # width. Reading the child width can create a layout feedback loop as
+        # the justified rows request more natural width than the viewport.
+        outer_width = self.get_width()
+        if outer_width <= 0:
+            return 1100
+        return max(240, min(self._max_width, outer_width - GRID_HORIZONTAL_MARGIN))
+
+    def _poll_width(self):
+        try:
+            width = self._available_width()
+        except Exception:
+            return False
+        if width > 0 and abs(width - self._layout_width) >= 2:
+            log.debug("Reflowing gallery at width %s (was %s)", width, self._layout_width)
+            self._relayout(width)
+        return True
 
     def _sync_footer(self) -> None:
         if not self.show_footer:

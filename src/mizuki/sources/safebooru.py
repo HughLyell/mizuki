@@ -39,24 +39,35 @@ class SafebooruSource(Source):
         return {"Accept": "application/json", "Referer": "https://safebooru.org/"}
 
     def search_tags(self, query: SearchQuery, tags_override: list[str] | None = None) -> list[str]:
-        return [
+        tags = [
             tag
             for tag in (tags_override if tags_override is not None else self.query_tags(query))
             if not tag.lstrip("-").lower().startswith(("rating:", "order:", "status:"))
         ]
+        if query.sort == "score":
+            tags.append("sort:score:desc")
+        elif query.sort == "random":
+            tags.append("sort:random")
+        return tags
 
     def search(self, query: SearchQuery) -> SourcePage:
-        tags = self.query_tags(query)
-        phrase = self.fallback_phrase_tags(query)
-        page = self._search_tags(query, tags)
-        if not page.posts and phrase is not None and [tag.lower() for tag in tags] != [tag.lower() for tag in phrase]:
+        last_page: SourcePage | None = None
+        last_error: SourceError | None = None
+        for tags in self.search_variants(query):
             try:
-                alternate = self._search_tags(query, phrase)
-            except SourceError:
+                page = self._search_tags(query, tags)
+            except SourceError as exc:
+                last_error = exc
+                continue
+            last_page = page
+            if page.posts:
+                self.remember_variant(query, tags)
                 return page
-            if alternate.posts:
-                return alternate
-        return page
+        if last_page is not None:
+            return last_page
+        if last_error is not None:
+            raise last_error
+        return SourcePage(posts=[], has_more=False)
 
     def _search_tags(self, query: SearchQuery, tags_override: list[str]) -> SourcePage:
         limit = max(1, min(query.limit, 100))
@@ -93,12 +104,6 @@ class SafebooruSource(Source):
             post = self._parse(raw)
             if post is not None and post.is_safe:
                 posts.append(post)
-        if query.sort == "score":
-            posts.sort(key=lambda post: post.score, reverse=True)
-        elif query.sort == "random":
-            import random
-
-            random.shuffle(posts)
         return SourcePage(posts=posts, has_more=len(payload) >= limit)
 
     def _parse(self, raw: dict) -> Post | None:
