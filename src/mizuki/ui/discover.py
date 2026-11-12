@@ -187,6 +187,13 @@ class DiscoverPage(Gtk.Box):
         self.filter_row.append(self.filter_entry)
         panel.append(self.filter_row)
 
+        self.notice_label = Gtk.Label()
+        self.notice_label.add_css_class("filter-note")
+        self.notice_label.set_xalign(0)
+        self.notice_label.set_wrap(True)
+        self.notice_label.set_visible(False)
+        panel.append(self.notice_label)
+
         self.query_chips = Gtk.FlowBox()
         self.query_chips.set_selection_mode(Gtk.SelectionMode.NONE)
         self.query_chips.set_min_children_per_line(1)
@@ -363,6 +370,7 @@ class DiscoverPage(Gtk.Box):
             self._query = SearchQuery(text=text, page=1, limit=limit, safe=safe, sort=sort)
             self._has_more = False
             self._result_posts = []
+            self.notice_label.set_visible(False)
             self.grid.clear()
         else:
             if self._loading or not self._has_more:
@@ -397,7 +405,13 @@ class DiscoverPage(Gtk.Box):
             on_results=self._on_results,
             on_error=self._on_error,
             on_finished=self._on_finished,
+            on_notice=self._on_source_notice,
         )
+
+    def _on_source_notice(self, message: str) -> None:
+        log.warning("Source notice: %s", message)
+        self.notice_label.set_text(message)
+        self.notice_label.set_visible(True)
 
     def load_more(self) -> None:
         if self._loading or not self._has_more:

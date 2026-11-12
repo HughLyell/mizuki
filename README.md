@@ -48,7 +48,7 @@ browser.
 | **Safebooru** | `safebooru.org` JSON API | Always safe | Uses the Gelbooru-style API because `safebooru.donmai.us` blocks API clients |
 | **Konachan** | Moebooru JSON API | `rating:safe` when SFW is on | Wallpapers and high-resolution art |
 | **Yande.re** | Moebooru JSON API | `rating:safe` when SFW is on | High-quality scans and illustrations |
-| **Zerochan** | Gallery page parsing | Always safe | Zerochan is SFW-only; automated access may be rate-limited |
+| **Zerochan** | Gallery page parsing | Always safe | Guest pages hide some images behind a member login; Mizuki merges publicly reachable related/recent images and shows a notice. It does not bypass logins |
 
 Mizuki sends an honest `User-Agent` identifying the project. Be considerate of
 each site's rate limits and terms of service.

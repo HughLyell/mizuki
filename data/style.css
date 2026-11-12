@@ -172,6 +172,14 @@ headerbar.mizuki-header {
   border: 1px solid alpha(@borders, 0.8);
 }
 
+.filter-note {
+  font-size: 11px;
+  opacity: 0.7;
+  padding: 7px 11px;
+  border-radius: 9px;
+  background-color: alpha(@accent_bg_color, 0.08);
+}
+
 .query-chip {
   border-radius: 999px;
   padding: 2px 10px;

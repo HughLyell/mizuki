@@ -98,6 +98,7 @@ class ZerochanTests(unittest.TestCase):
         self.assertEqual(first["id"], "4424191")
         self.assertEqual(first["full"], "https://static.zerochan.net/Frieren.full.4424191.jpg")
         self.assertIn("frieren", first["tags"])
+        self.assertEqual(first["primary"], "Frieren")
         self.assertIn("4800", first["title"])
 
     def test_to_post(self) -> None:
@@ -114,6 +115,37 @@ class ZerochanTests(unittest.TestCase):
         self.assertEqual(post.ext, "jpg")
         self.assertEqual(post.rating, "safe")
         self.assertEqual(post.page_url, "https://www.zerochan.net/4424191")
+
+    def test_construct_full_for_similar_tile(self) -> None:
+        source = ZerochanSource()
+        item = {
+            "id": "4034546",
+            "thumb": "https://s3.zerochan.net/240/46/40/4034546.avif",
+            "full": "https://s3.zerochan.net/240/46/40/4034546.avif",
+            "primary": "Genshin Impact",
+            "title": "1500✕1500 1234kb jpg\n326738\nUploaded by Doopliss",
+            "tags": ["genshin impact"],
+        }
+        self.assertEqual(
+            source._construct_full(item),
+            "https://static.zerochan.net/Genshin.Impact.full.4034546.jpg",
+        )
+        post = source._to_post(item)
+        assert post is not None
+        self.assertEqual(post.file_url, "https://static.zerochan.net/Genshin.Impact.full.4034546.jpg")
+        self.assertEqual(post.preview_url, "https://static.zerochan.net/Genshin.Impact.600.4034546.jpg")
+        self.assertEqual(post.ext, "jpg")
+
+    def test_extract_tag_data_tolerates_trailing_commas(self) -> None:
+        source = ZerochanSource()
+        html = (
+            'tagData = {\n'
+            '  "Shylily": {"total": 125, "thumbnails": ["4735525", "4648695",],},\n'
+            '}\nparentTags = {}'
+        )
+        data = source._extract_tag_data(html)
+        self.assertEqual(data["Shylily"]["total"], 125)
+        self.assertEqual(data["Shylily"]["thumbnails"], ["4735525", "4648695"])
 
 
 class MergeTests(unittest.TestCase):

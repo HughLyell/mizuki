@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 ResultsCallback = Callable[[list[Post], bool, list[str]], None]
 ErrorCallback = Callable[[str], None]
 SimpleCallback = Callable[[], None]
+NoticeCallback = Callable[[str], None]
 
 
 class SearchController:
@@ -44,6 +45,7 @@ class SearchController:
         on_results: ResultsCallback,
         on_error: ErrorCallback,
         on_finished: SimpleCallback | None = None,
+        on_notice: NoticeCallback | None = None,
     ) -> None:
         sources = [source for source in sources if source is not None]
         with self._lock:
@@ -62,10 +64,14 @@ class SearchController:
         def orchestrate() -> None:
             pages = []
             errors: list[str] = []
+            notices: list[str] = []
             for source, future in futures:
                 try:
                     page = future.result()
                     pages.append(page)
+                    if page.notice:
+                        notices.append(page.notice)
+                        log.warning("Source %s notice: %s", source.id, page.notice)
                     log.info(
                         "Source %s returned %d posts (has_more=%s)",
                         source.id, len(page.posts), page.has_more,
@@ -76,7 +82,10 @@ class SearchController:
                 except Exception as exc:  # pragma: no cover - third-party sources
                     log.exception("Source %s failed", source.id)
                     errors.append(f"{source.name}: {exc}")
-            GLib.idle_add(self._deliver, generation, pages, errors, on_results, on_error, on_finished)
+            GLib.idle_add(
+                self._deliver, generation, pages, errors, notices,
+                on_results, on_error, on_finished, on_notice,
+            )
 
         threading.Thread(target=orchestrate, name="mizuki-search-wait", daemon=True).start()
 
@@ -85,14 +94,22 @@ class SearchController:
         generation: int,
         pages,
         errors: list[str],
+        notices: list[str],
         on_results: ResultsCallback,
         on_error: ErrorCallback,
         on_finished: SimpleCallback | None,
+        on_notice: NoticeCallback | None,
     ):
         with self._lock:
             if generation != self._generation:
                 return False
         try:
+            if on_notice is not None:
+                for notice in notices:
+                    try:
+                        on_notice(notice)
+                    except Exception:
+                        log.exception("Search notice callback failed")
             if not pages:
                 on_error(errors[0] if errors else "Every source failed. Check your connection and try again.")
                 return False

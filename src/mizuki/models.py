@@ -239,6 +239,7 @@ class SourcePage:
 
     posts: list[Post] = field(default_factory=list)
     has_more: bool = False
+    notice: str = ""
 
 
 @dataclass(slots=True)
