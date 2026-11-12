@@ -173,6 +173,9 @@ class PostGrid(Gtk.ScrolledWindow):
         self._size = size
         self._relayout(force=True)
 
+    def request_relayout(self) -> None:
+        self._relayout(force=True)
+
     def refresh_favorites(self) -> None:
         favorite_keys = {post.key for post in self.favorites.all()}
         for key, card in self._cards.items():

@@ -783,6 +783,9 @@ class DiscoverPage(Gtk.Box):
         self.run_search(reset=True)
 
     # -- empty state suggestions -----------------------------------------
+    def refresh_recent_searches(self) -> None:
+        self._update_empty_suggestions()
+
     def _update_empty_suggestions(self) -> None:
         for flow in (self.empty_chips, self.recent_chips):
             child = flow.get_first_child()

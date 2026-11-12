@@ -9,7 +9,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
 
 from .. import APP_ID, APP_ISSUES, APP_NAME, APP_WEBSITE, __version__  # noqa: E402
 from ..models import Post  # noqa: E402
@@ -28,8 +28,6 @@ PAGE_TITLES = {
     "downloads": "Your download queue",
 }
 
-GENERIC_TAGS = ["landscape", "scenery", "1girl", "sky", "city", "flowers", "sunset", "portrait"]
-
 
 class MizukiWindow(Adw.ApplicationWindow):
     def __init__(self, app) -> None:
@@ -44,6 +42,8 @@ class MizukiWindow(Adw.ApplicationWindow):
         self.theme = app.theme
         self._current_page = "discover"
         self._syncing_safe = False
+        self._syncing_sidebar = False
+        self._sidebar_visible = bool(self.settings.get("sidebar_visible", True))
         self._source_selection_guard = False
         self._changing_source = False
         self._preferences: PreferencesDialog | None = None
@@ -68,7 +68,8 @@ class MizukiWindow(Adw.ApplicationWindow):
         self._initial_source = self._determine_initial_source()
         self._rebuild_source_rows()
         self._sync_source_selection(self._initial_source)
-        self._update_sidebar_tags(self._initial_source)
+        self._update_sidebar_recent()
+        self._apply_sidebar_visibility(self._sidebar_visible)
         self._sync_safe_controls(bool(self.settings.get("safe_search", True)))
         self._apply_color_scheme()
         self._apply_accent()
@@ -76,6 +77,8 @@ class MizukiWindow(Adw.ApplicationWindow):
 
         self.settings.subscribe("safe_search", self._on_safe_setting_changed)
         self.settings.subscribe("blur_nsfw", self._on_blur_changed)
+        self.settings.subscribe("sidebar_visible", self._on_sidebar_setting_changed)
+        self.settings.subscribe("recent_searches", self._on_recent_searches_changed)
         self.settings.subscribe("grid_size", self._on_grid_changed)
         self.settings.subscribe("accent", self._on_accent_changed)
         self.settings.subscribe("color_scheme", self._on_scheme_changed)
@@ -83,6 +86,8 @@ class MizukiWindow(Adw.ApplicationWindow):
         self._settings_subscriptions = [
             ("safe_search", self._on_safe_setting_changed),
             ("blur_nsfw", self._on_blur_changed),
+            ("sidebar_visible", self._on_sidebar_setting_changed),
+            ("recent_searches", self._on_recent_searches_changed),
             ("grid_size", self._on_grid_changed),
             ("accent", self._on_accent_changed),
             ("color_scheme", self._on_scheme_changed),
@@ -105,6 +110,21 @@ class MizukiWindow(Adw.ApplicationWindow):
         header.add_css_class("mizuki-header")
         header.set_show_start_title_buttons(True)
         header.set_show_end_title_buttons(True)
+
+        self.sidebar_toggle = Gtk.ToggleButton()
+        self.sidebar_toggle.set_icon_name("sidebar-show-symbolic")
+        self.sidebar_toggle.add_css_class("flat")
+        self.sidebar_toggle.add_css_class("sidebar-toggle")
+        self.sidebar_toggle.set_active(self._sidebar_visible)
+        self.sidebar_toggle.set_tooltip_text(
+            "Hide sidebar" if self._sidebar_visible else "Show sidebar"
+        )
+        self.sidebar_toggle.update_property(
+            [Gtk.AccessibleProperty.LABEL],
+            ["Hide sidebar" if self._sidebar_visible else "Show sidebar"],
+        )
+        self.sidebar_toggle.connect("toggled", self._on_sidebar_toggled)
+        header.pack_start(self.sidebar_toggle)
 
         brand = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
         brand.add_css_class("brand-box")
@@ -154,15 +174,11 @@ class MizukiWindow(Adw.ApplicationWindow):
         return header
 
     def _build_body(self) -> Gtk.Widget:
-        self.split_view = Adw.NavigationSplitView()
+        self.split_view = Adw.OverlaySplitView()
         self.split_view.set_min_sidebar_width(248)
         self.split_view.set_max_sidebar_width(300)
-
-        sidebar_page = Adw.NavigationPage()
-        sidebar_page.set_title("Mizuki")
-        sidebar_page.set_tag("sidebar")
-        sidebar_page.set_child(self._build_sidebar())
-        self.split_view.set_sidebar(sidebar_page)
+        self.split_view.set_pin_sidebar(True)
+        self.split_view.set_show_sidebar(self._sidebar_visible)
 
         self.page_stack = Gtk.Stack()
         self.page_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
@@ -170,11 +186,8 @@ class MizukiWindow(Adw.ApplicationWindow):
         self.page_stack.set_vexpand(True)
         self.page_stack.set_hexpand(True)
 
-        content_page = Adw.NavigationPage()
-        content_page.set_title("Browse")
-        content_page.set_tag("content")
-        content_page.set_child(self.page_stack)
-        self.split_view.set_content(content_page)
+        self.split_view.set_sidebar(self._build_sidebar())
+        self.split_view.set_content(self.page_stack)
         return self.split_view
 
     def _build_sidebar(self) -> Gtk.Widget:
@@ -218,6 +231,28 @@ class MizukiWindow(Adw.ApplicationWindow):
                 self._nav_wrappers[page_id] = wrapper
         inner.append(self.nav_list)
 
+        inner.append(self._heading("RECENT SEARCHES"))
+        self.sidebar_recent_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.sidebar_recent_box.set_margin_start(14)
+        self.sidebar_recent_box.set_margin_end(14)
+        self.sidebar_recent_box.set_margin_top(2)
+        self.sidebar_recent_box.set_margin_bottom(4)
+
+        self.sidebar_recent = Gtk.FlowBox()
+        self.sidebar_recent.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.sidebar_recent.set_min_children_per_line(1)
+        self.sidebar_recent.set_max_children_per_line(2)
+        self.sidebar_recent.set_row_spacing(6)
+        self.sidebar_recent.set_column_spacing(6)
+        self.sidebar_recent.set_valign(Gtk.Align.START)
+        self.sidebar_recent_box.append(self.sidebar_recent)
+
+        self.sidebar_recent_empty = Gtk.Label(label="No recent searches yet")
+        self.sidebar_recent_empty.add_css_class("sidebar-empty")
+        self.sidebar_recent_empty.set_xalign(0)
+        self.sidebar_recent_box.append(self.sidebar_recent_empty)
+        inner.append(self.sidebar_recent_box)
+
         inner.append(self._heading("SOURCES"))
         self.source_list = Gtk.ListBox()
         self.source_list.add_css_class("navigation-sidebar")
@@ -225,20 +260,6 @@ class MizukiWindow(Adw.ApplicationWindow):
         self.source_list.connect("row-selected", self._on_source_row_activated)
         self._source_rows: dict[str, Adw.ActionRow] = {}
         inner.append(self.source_list)
-
-        inner.append(self._heading("POPULAR TAGS"))
-        self.sidebar_tags = Gtk.FlowBox()
-        self.sidebar_tags.set_selection_mode(Gtk.SelectionMode.NONE)
-        self.sidebar_tags.set_min_children_per_line(2)
-        self.sidebar_tags.set_max_children_per_line(3)
-        self.sidebar_tags.set_row_spacing(6)
-        self.sidebar_tags.set_column_spacing(6)
-        self.sidebar_tags.set_margin_start(14)
-        self.sidebar_tags.set_margin_end(14)
-        self.sidebar_tags.set_margin_top(2)
-        self.sidebar_tags.set_margin_bottom(4)
-        self.sidebar_tags.set_valign(Gtk.Align.START)
-        inner.append(self.sidebar_tags)
 
         scroll.set_child(inner)
         sidebar.append(scroll)
@@ -417,27 +438,88 @@ class MizukiWindow(Adw.ApplicationWindow):
                 source_id, row, self.source_list.get_selected_row(),
             )
 
-    def _update_sidebar_tags(self, source_id: str) -> None:
-        child = self.sidebar_tags.get_first_child()
+    def _update_sidebar_recent(self) -> None:
+        child = self.sidebar_recent.get_first_child()
         while child is not None:
-            self.sidebar_tags.remove(child)
-            child = self.sidebar_tags.get_first_child()
-        if source_id == "all":
-            tags: list[str] = []
-            for source in self.registry.select(self.settings.get("enabled_sources", [])):
-                for tag in source.popular_tags:
-                    if tag not in tags:
-                        tags.append(tag)
-            tags = tags or list(GENERIC_TAGS)
-        else:
-            source = self.registry.get(source_id)
-            tags = list(source.popular_tags) if source and source.popular_tags else list(GENERIC_TAGS)
-        for tag in tags[:8]:
-            button = Gtk.Button(label=tag)
-            button.add_css_class("tag-pill")
-            button.set_tooltip_text(f"Search for “{tag}”")
-            button.connect("clicked", lambda _b, value=tag: self._search_tag(value))
-            self.sidebar_tags.append(button)
+            self.sidebar_recent.remove(child)
+            child = self.sidebar_recent.get_first_child()
+
+        recent = [
+            " ".join(str(item).split())
+            for item in self.settings.get("recent_searches", [])
+            if str(item).strip()
+        ][:8]
+        for term in recent:
+            chip = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+            chip.add_css_class("recent-chip")
+
+            label = Gtk.Label(label=term)
+            label.set_ellipsize(Pango.EllipsizeMode.END)
+            label.set_max_width_chars(20)
+            label.set_xalign(0)
+            search = Gtk.Button()
+            search.add_css_class("flat")
+            search.add_css_class("recent-chip-search")
+            search.set_child(label)
+            search.set_tooltip_text(f"Search for “{term}”")
+            search.connect("clicked", lambda _b, value=term: self._search_tag(value))
+            chip.append(search)
+
+            close = Gtk.Button(icon_name="window-close-symbolic")
+            close.add_css_class("flat")
+            close.add_css_class("recent-chip-close")
+            close.set_tooltip_text(f"Remove “{term}” from recent searches")
+            close.update_property(
+                [Gtk.AccessibleProperty.LABEL],
+                [f"Remove {term} from recent searches"],
+            )
+            close.connect("clicked", lambda _b, value=term: self._remove_recent_search(value))
+            chip.append(close)
+            self.sidebar_recent.append(chip)
+
+        self.sidebar_recent.set_visible(bool(recent))
+        self.sidebar_recent_empty.set_visible(not recent)
+
+    def _remove_recent_search(self, term: str) -> None:
+        self.settings.remove_recent_search(term)
+        self.toast(f"Removed “{term}” from recent searches")
+
+    def _on_recent_searches_changed(self, _key, _value) -> None:
+        self._update_sidebar_recent()
+        if hasattr(self, "discover"):
+            self.discover.refresh_recent_searches()
+
+    def _on_sidebar_toggled(self, button) -> None:
+        if self._syncing_sidebar:
+            return
+        self.settings.set("sidebar_visible", bool(button.get_active()))
+
+    def _on_sidebar_setting_changed(self, _key, value) -> None:
+        self._syncing_sidebar = True
+        try:
+            self._apply_sidebar_visibility(bool(value))
+            self.sidebar_toggle.set_active(bool(value))
+        finally:
+            self._syncing_sidebar = False
+
+    def _apply_sidebar_visibility(self, visible: bool) -> None:
+        self._sidebar_visible = bool(visible)
+        if hasattr(self, "split_view"):
+            self.split_view.set_show_sidebar(self._sidebar_visible)
+        if hasattr(self, "sidebar_toggle"):
+            label = "Hide sidebar" if self._sidebar_visible else "Show sidebar"
+            self.sidebar_toggle.set_tooltip_text(label)
+            self.sidebar_toggle.update_property(
+                [Gtk.AccessibleProperty.LABEL], [label]
+            )
+        GLib.timeout_add(280, self._relayout_galleries)
+
+    def _relayout_galleries(self):
+        if hasattr(self, "discover"):
+            self.discover.grid.request_relayout()
+        if hasattr(self, "favorites_page"):
+            self.favorites_page.grid.request_relayout()
+        return False
 
     # -- page navigation -------------------------------------------------
     def switch_page(self, page_id: str, *, refresh: bool = True) -> None:
@@ -493,7 +575,6 @@ class MizukiWindow(Adw.ApplicationWindow):
         source_id = self._initial_source
         self.discover.set_source(source_id, run=False)
         self._sync_source_selection(source_id)
-        self._update_sidebar_tags(source_id)
         self._update_header()
         self.discover.run_search(reset=True)
         return False
@@ -506,7 +587,6 @@ class MizukiWindow(Adw.ApplicationWindow):
             self._changing_source = False
         self.discover.set_source(source_id, run=False)
         self._sync_source_selection(source_id)
-        self._update_sidebar_tags(source_id)
         self.switch_page("discover", refresh=False)
         if run:
             self.discover.run_search(reset=True)
@@ -657,7 +737,6 @@ class MizukiWindow(Adw.ApplicationWindow):
         self._rebuild_source_rows()
         self.discover.refresh_sources()
         self._sync_source_selection(self.discover.current_source_id())
-        self._update_sidebar_tags(self.discover.current_source_id())
         if self._current_page == "discover":
             self.discover.run_search(reset=True)
         self._update_header()

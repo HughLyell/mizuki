@@ -10,8 +10,8 @@ browser.
 
 - **Stack:** Python 3 + PyGObject + GTK 4 + libadwaita
 - **Target:** GNOME and KDE Plasma, Wayland or X11
-- **Design:** rounded artwork cards, mauve accent palette, persistent side
-  panel with sources and popular tags
+- **Design:** rounded artwork cards, mauve accent palette, and a collapsible
+  side panel with sources and removable recent searches
 
 ## Features
 
@@ -34,6 +34,10 @@ browser.
 - **Justified artwork grid** — responsive, keyboard-accessible tiles that keep
   each image’s rough aspect ratio, with proportional widths and a shared row
   height. Compact/comfortable/large size settings and hover actions included.
+- **Collapsible sidebar** — hide the side panel to let the gallery reclaim the
+  width and reflow immediately; the choice is remembered between launches.
+- **Recent searches** — the sidebar keeps your latest searches as clickable
+  chips. Click the cross on a chip to remove it.
 - **Detail view** — high-resolution preview, metadata, clickable tags,
   copy-link and open-source actions.
 - **Downloads** — background queue with progress, cancel/retry, file manager
@@ -174,7 +178,10 @@ Mizuki is deliberately small and native:
   Every tag must match. The filter is hidden when “All sources” is selected and
   each source remembers its own filter.
 - Click any tag chip in the detail view to search for it.
-- Popular tags in the sidebar are one-click searches for the selected source.
+- Recent searches in the sidebar are one-click searches. Click the small cross
+  on a recent-search chip to remove it from the list.
+- Use the sidebar toggle in the header to hide the side panel and let the grid
+  use the full window width.
 - `rating:` and `order:` metatags typed by the user are stripped so the app's
   SFW policy and sort controls stay authoritative.
 - Zerochan supports multiple tags comma-separated; Mizuki handles this
