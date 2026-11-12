@@ -38,17 +38,45 @@ def _configure_logging() -> None:
     logging.getLogger(__name__).info("Mizuki %s starting", __version__)
 
 
+def _source_check() -> int:
+    """Network smoke test for every built-in source (no GTK required)."""
+    from .models import SearchQuery
+    from .sources import SourceRegistry
+
+    registry = SourceRegistry(include_plugins=False)
+    failures = 0
+    for source in registry.all():
+        try:
+            page = source.search(SearchQuery(text="landscape", limit=3, safe=True))
+            print(
+                f"{source.id}: {len(page.posts)} posts (has_more={page.has_more})",
+                flush=True,
+            )
+            if page.posts:
+                print(f"  {page.posts[0].thumb_url}", flush=True)
+        except Exception as exc:
+            failures += 1
+            print(f"{source.id}: ERROR {type(exc).__name__}: {exc}", flush=True)
+    print(f"Sources checked: {len(registry.all())}, failures: {failures}", flush=True)
+    return 1 if failures else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv if argv is None else argv)
     smoke_test = "--smoke-test" in argv[1:]
     if smoke_test:
         argv = [argument for argument in argv if argument != "--smoke-test"]
         os.environ["MIZUKI_SMOKE_TEST"] = "1"
+    source_check = "--source-check" in argv[1:]
+    if source_check:
+        argv = [argument for argument in argv if argument != "--source-check"]
     if any(arg in ("--version", "-v") for arg in argv[1:]):
         print(f"{APP_NAME} {__version__}")
         return 0
 
     _configure_logging()
+    if source_check:
+        return _source_check()
 
     try:
         import gi

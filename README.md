@@ -299,6 +299,14 @@ with `grim`, `gnome-screenshot`, Spectacle or ImageMagick:
 bash scripts/gui-check.sh --screenshot
 ```
 
+To check the network adapters without GTK:
+
+```bash
+./run.sh --source-check
+```
+
+Application logs are always written to `~/.cache/mizuki/mizuki.log`.
+
 ## Legal
 
 Mizuki is an unofficial client. It is not affiliated with Danbooru,
