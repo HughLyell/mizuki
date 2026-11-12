@@ -28,6 +28,9 @@ PAGE_TITLES = {
     "downloads": "Your download queue",
 }
 
+SIDEBAR_RECENT_LIMIT = 6
+RECENT_LABEL_WIDTH_CHARS = 9
+
 
 class MizukiWindow(Adw.ApplicationWindow):
     def __init__(self, app) -> None:
@@ -76,14 +79,6 @@ class MizukiWindow(Adw.ApplicationWindow):
         self._apply_accent()
         self._update_header()
 
-        self.settings.subscribe("safe_search", self._on_safe_setting_changed)
-        self.settings.subscribe("blur_nsfw", self._on_blur_changed)
-        self.settings.subscribe("sidebar_visible", self._on_sidebar_setting_changed)
-        self.settings.subscribe("recent_searches", self._on_recent_searches_changed)
-        self.settings.subscribe("grid_size", self._on_grid_changed)
-        self.settings.subscribe("accent", self._on_accent_changed)
-        self.settings.subscribe("color_scheme", self._on_scheme_changed)
-        self.settings.subscribe("enabled_sources", self._on_sources_changed)
         self._settings_subscriptions = [
             ("safe_search", self._on_safe_setting_changed),
             ("blur_nsfw", self._on_blur_changed),
@@ -94,6 +89,8 @@ class MizukiWindow(Adw.ApplicationWindow):
             ("color_scheme", self._on_scheme_changed),
             ("enabled_sources", self._on_sources_changed),
         ]
+        for key, callback in self._settings_subscriptions:
+            self.settings.subscribe(key, callback)
 
         self.downloads.add_listener(self._on_download_event)
         style_manager = Adw.StyleManager.get_default()
@@ -178,9 +175,9 @@ class MizukiWindow(Adw.ApplicationWindow):
         # A plain horizontal box makes the sidebar and content share one fixed
         # window width. Adw.OverlaySplitView could grow the window when the
         # sidebar was revealed, pushing the opposite edge off-screen.
-        self.split_view = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
-        self.split_view.set_hexpand(True)
-        self.split_view.set_vexpand(True)
+        self.body_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        self.body_box.set_hexpand(True)
+        self.body_box.set_vexpand(True)
 
         self.page_stack = Gtk.Stack()
         self.page_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
@@ -190,15 +187,19 @@ class MizukiWindow(Adw.ApplicationWindow):
 
         self.sidebar_widget = self._build_sidebar()
         self.sidebar_widget.set_visible(self._sidebar_visible)
-        self.split_view.append(self.sidebar_widget)
-        self.split_view.append(self.page_stack)
-        return self.split_view
+        self.body_box.append(self.sidebar_widget)
+        self.body_box.append(self.page_stack)
+        return self.body_box
 
     def _build_sidebar(self) -> Gtk.Widget:
         sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         sidebar.add_css_class("sidebar")
         sidebar.add_css_class("sidebar-pane")
         sidebar.set_size_request(272, -1)
+        # Recent chips expand inside their row. Without hexpand_set, that
+        # expansion propagates to the sidebar and makes it jump in width.
+        sidebar.set_hexpand(False)
+        sidebar.set_hexpand_set(True)
 
         scroll = Gtk.ScrolledWindow()
         scroll.add_css_class("sidebar-scroll")
@@ -448,48 +449,51 @@ class MizukiWindow(Adw.ApplicationWindow):
             " ".join(str(item).split())
             for item in self.settings.get("recent_searches", [])
             if str(item).strip()
-        ][:6]
+        ][:SIDEBAR_RECENT_LIMIT]
         for start in range(0, len(recent), 2):
             pair = recent[start:start + 2]
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
             row.set_homogeneous(True)
             for term in pair:
-                chip = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
-                chip.add_css_class("recent-chip")
-                chip.set_hexpand(True)
-
-                label = Gtk.Label(label=term)
-                label.set_ellipsize(Pango.EllipsizeMode.END)
-                label.set_width_chars(11)
-                label.set_max_width_chars(11)
-                label.set_xalign(0)
-                search = Gtk.Button()
-                search.add_css_class("flat")
-                search.add_css_class("recent-chip-search")
-                search.set_child(label)
-                search.set_tooltip_text(f"Search for “{term}”")
-                search.connect("clicked", lambda _b, value=term: self._search_tag(value))
-                chip.append(search)
-
-                close = Gtk.Button(icon_name="window-close-symbolic")
-                close.add_css_class("flat")
-                close.add_css_class("recent-chip-close")
-                close.set_tooltip_text(f"Remove “{term}” from recent searches")
-                close.update_property(
-                    [Gtk.AccessibleProperty.LABEL],
-                    [f"Remove {term} from recent searches"],
-                )
-                close.connect(
-                    "clicked", lambda _b, value=term: self._remove_recent_search(value)
-                )
-                chip.append(close)
-                row.append(chip)
+                row.append(self._make_recent_chip(term))
             if len(pair) == 1:
                 row.append(Gtk.Box())
             self.sidebar_recent.append(row)
 
         self.sidebar_recent.set_visible(bool(recent))
         self.sidebar_recent_empty.set_visible(not recent)
+
+    def _make_recent_chip(self, term: str) -> Gtk.Widget:
+        chip = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        chip.add_css_class("recent-chip")
+
+        label = Gtk.Label(label=term)
+        label.set_ellipsize(Pango.EllipsizeMode.END)
+        label.set_width_chars(RECENT_LABEL_WIDTH_CHARS)
+        label.set_max_width_chars(RECENT_LABEL_WIDTH_CHARS)
+        label.set_xalign(0)
+
+        search = Gtk.Button()
+        search.add_css_class("flat")
+        search.add_css_class("recent-chip-search")
+        search.set_child(label)
+        search.set_tooltip_text(f"Search for “{term}”")
+        search.connect("clicked", lambda _b, value=term: self._search_tag(value))
+        chip.append(search)
+
+        close = Gtk.Button(icon_name="window-close-symbolic")
+        close.add_css_class("flat")
+        close.add_css_class("recent-chip-close")
+        close.set_tooltip_text(f"Remove “{term}” from recent searches")
+        close.update_property(
+            [Gtk.AccessibleProperty.LABEL],
+            [f"Remove {term} from recent searches"],
+        )
+        close.connect(
+            "clicked", lambda _b, value=term: self._remove_recent_search(value)
+        )
+        chip.append(close)
+        return chip
 
     def _remove_recent_search(self, term: str) -> None:
         self.settings.remove_recent_search(term)

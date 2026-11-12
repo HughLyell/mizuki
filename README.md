@@ -36,7 +36,7 @@ browser.
   height. Compact/comfortable/large size settings and hover actions included.
 - **Collapsible sidebar** — hide the side panel to let the gallery reclaim the
   width and reflow immediately; the choice is remembered between launches.
-- **Recent searches** — the sidebar keeps your latest searches as clickable
+- **Recent searches** — the sidebar keeps your latest six searches as clickable
   chips. Click the cross on a chip to remove it.
 - **Detail view** — high-resolution preview, metadata, clickable tags,
   copy-link and open-source actions.

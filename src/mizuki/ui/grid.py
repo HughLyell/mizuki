@@ -17,9 +17,10 @@ from .gallery_layout import build_justified_rows  # noqa: E402
 log = logging.getLogger(__name__)
 
 GALLERY_GAP = 12
+GRID_SIDE_MARGIN = 24
+GRID_HORIZONTAL_MARGIN = GRID_SIDE_MARGIN * 2
 # .image-card has a 1px border on each side; size requests exclude CSS chrome.
 CARD_CHROME = 2
-GRID_HORIZONTAL_MARGIN = 48
 
 # target row height, minimum row height, maximum row height
 GRID_SIZES: dict[str, tuple[int, int, int]] = {
@@ -77,8 +78,8 @@ class PostGrid(Gtk.ScrolledWindow):
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
         outer.set_margin_top(18)
         outer.set_margin_bottom(28)
-        outer.set_margin_start(24)
-        outer.set_margin_end(24)
+        outer.set_margin_start(GRID_SIDE_MARGIN)
+        outer.set_margin_end(GRID_SIDE_MARGIN)
 
         self.flow = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=GALLERY_GAP)
         self.flow.add_css_class("image-grid")
@@ -177,15 +178,17 @@ class PostGrid(Gtk.ScrolledWindow):
     def request_relayout(self) -> None:
         self._relayout(force=True)
 
-    def prepare_for_width(self, width: int) -> None:
-        """Shrink tiles before a sidebar expands into the content area.
+    def prepare_for_width(self, allocated_width: int) -> None:
+        """Shrink tiles before the sidebar expands into the content area.
 
-        The cards' size requests are part of the content's minimum width. If
-        the sidebar is revealed first, the window can grow instead of letting
-        the gallery shrink, pushing part of the app off-screen.
+        ``allocated_width`` is the PostGrid's future allocated width. The cards'
+        size requests are part of the content's minimum width, so if the sidebar
+        is revealed first, the window can grow instead of letting the gallery
+        shrink. The internal horizontal margin is subtracted here to keep the
+        grid's minimum size consistent with its reflow width.
         """
-        if width > 0:
-            content_width = max(240, int(width) - GRID_HORIZONTAL_MARGIN)
+        if allocated_width > 0:
+            content_width = max(240, int(allocated_width) - GRID_HORIZONTAL_MARGIN)
             self._relayout(content_width, force=True)
 
     def refresh_favorites(self) -> None:
