@@ -39,5 +39,10 @@ jobs:
             dist/Mizuki-0.1.0-x86_64.AppImage \
             dist/Mizuki-0.1.0-x86_64.run \
             --clobber
+
+      - name: Update release notes
+        run: gh release edit v0.1.0 --notes-file packaging/appimage/RELEASE_NOTES.md
+        env:
+          GH_TOKEN: ${{ github.token }}
         env:
           GH_TOKEN: ${{ github.token }}
