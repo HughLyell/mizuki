@@ -119,6 +119,28 @@ LINUXDEPLOY_ARGS=(--appimage-extract-and-run)
 cp "$ROOT/packaging/appimage/AppRun" "$APPDIR/AppRun"
 chmod +x "$APPDIR/AppRun"
 
+# GIO launches desktop handlers through the small `gio-launch-desktop` helper,
+# which is not part of the bundled library closure on every distribution. The
+# AppImage sets GIO_LAUNCH_DESKTOP to this copy so "open in browser" and
+# "open folder" work even when the host has no such helper.
+GIO_LAUNCH_DESKTOP_BIN="$(command -v gio-launch-desktop 2>/dev/null || true)"
+if [ -z "$GIO_LAUNCH_DESKTOP_BIN" ]; then
+    for candidate in /usr/libexec/gio-launch-desktop /usr/lib/*/gio-launch-desktop \
+            /usr/local/libexec/gio-launch-desktop; do
+        if [ -x "$candidate" ]; then
+            GIO_LAUNCH_DESKTOP_BIN="$candidate"
+            break
+        fi
+    done
+fi
+if [ -n "$GIO_LAUNCH_DESKTOP_BIN" ]; then
+    cp "$GIO_LAUNCH_DESKTOP_BIN" "$APPDIR/usr/bin/gio-launch-desktop"
+    chmod +x "$APPDIR/usr/bin/gio-launch-desktop"
+    echo "Bundled gio-launch-desktop from $GIO_LAUNCH_DESKTOP_BIN"
+else
+    echo "warning: gio-launch-desktop not found; external handlers use xdg-open" >&2
+fi
+
 APPIMAGETOOL="$TOOLS/appimagetool-${ARCH}"
 download \
     "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${ARCH}.AppImage" \

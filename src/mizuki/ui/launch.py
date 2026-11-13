@@ -21,48 +21,9 @@ import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gio, GLib, Gtk  # noqa: E402
 
+from .launch_env import clean_appimage_env  # noqa: E402
+
 log = logging.getLogger(__name__)
-
-# Environment variables the AppImage runtime injects for Mizuki itself. They
-# must not leak into a child process (the browser would try to load the
-# bundled, incompatible GTK/GIO modules and libraries).
-_APPENV_VARS = (
-    "LD_LIBRARY_PATH",
-    "LD_PRELOAD",
-    "GTK_PATH",
-    "GTK_EXE_PREFIX",
-    "GTK_DATA_PREFIX",
-    "GTK_MODULES",
-    "GDK_PIXBUF_MODULE_FILE",
-    "GDK_PIXBUF_MODULEDIR",
-    "GIO_MODULE_DIR",
-    "GIO_EXTRA_MODULES",
-    "GSETTINGS_SCHEMA_DIR",
-    "GI_TYPELIB_PATH",
-    "GST_PLUGIN_PATH",
-    "GST_PLUGIN_SCANNER",
-    "FONTCONFIG_FILE",
-)
-_APPENV_PATH_VARS = ("PATH", "XDG_DATA_DIRS")
-
-
-def _appimage_clean_env() -> dict[str, str]:
-    """A copy of the environment with the AppImage's injected vars removed."""
-    env = dict(os.environ)
-    for var in _APPENV_VARS:
-        env.pop(var, None)
-    appdir = os.environ.get("APPDIR", "")
-    if appdir:
-        for var in _APPENV_PATH_VARS:
-            value = env.get(var)
-            if not value:
-                continue
-            parts = [part for part in value.split(":") if part and not part.startswith(appdir)]
-            if parts:
-                env[var] = ":".join(parts)
-            else:
-                env.pop(var, None)
-    return env
 
 
 def _report(on_error, uri: str, exc: Exception) -> None:
@@ -72,18 +33,23 @@ def _report(on_error, uri: str, exc: Exception) -> None:
         on_error(f"Could not open link: {message}")
 
 
-def _launch_via_xdg_open(uri: str, on_error) -> None:
+def _launch_via_xdg_open(uri: str, on_error) -> bool:
     try:
         subprocess.Popen(
             ["xdg-open", uri],
-            env=_appimage_clean_env(),
+            env=clean_appimage_env(os.environ),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
+        return True
+    except FileNotFoundError:
+        log.info("xdg-open is unavailable; falling back to Gtk.UriLauncher")
+        return False
     except (OSError, GLib.Error) as exc:
         _report(on_error, uri, exc)
+        return True
 
 
 def _launch_via_gtk(parent, uri: str, on_error) -> None:
@@ -128,7 +94,6 @@ def launch_external(uri: str, *, parent=None, on_error=None) -> None:
         if on_error is not None:
             on_error("No link available")
         return
-    if os.environ.get("APPDIR"):
-        _launch_via_xdg_open(uri, on_error)
-    else:
-        _launch_via_gtk(parent, uri, on_error)
+    if os.environ.get("APPDIR") and _launch_via_xdg_open(uri, on_error):
+        return
+    _launch_via_gtk(parent, uri, on_error)

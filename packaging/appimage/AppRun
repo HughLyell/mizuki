@@ -16,6 +16,13 @@ export MIZUKI_DATA_DIR="$HERE/usr/share/mizuki/data"
 export PATH="$HERE/usr/bin:${PATH:-/usr/bin:/bin}"
 export XDG_DATA_DIRS="$HERE/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 
+# The bundled GLib needs its gio-launch-desktop helper to spawn desktop
+# handlers (browser, file manager). The AppImage ships a copy because the host
+# may not have one on a path the bundled GLib looks at.
+if [ -x "$HERE/usr/bin/gio-launch-desktop" ]; then
+    export GIO_LAUNCH_DESKTOP="$HERE/usr/bin/gio-launch-desktop"
+fi
+
 # Frozen Python cannot rely on the host's OpenSSL default CA path.
 if [ -f "$HERE/usr/share/mizuki/ca-certificates.crt" ]; then
     export SSL_CERT_FILE="$HERE/usr/share/mizuki/ca-certificates.crt"
