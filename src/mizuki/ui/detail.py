@@ -8,9 +8,10 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Adw, Gdk, Gtk, Pango  # noqa: E402
 
 from ..models import Post  # noqa: E402
+from .launch import launch_external  # noqa: E402
 
 
 class ImageDetailDialog(Adw.Dialog):
@@ -346,12 +347,11 @@ class ImageDetailDialog(Adw.Dialog):
         self._toast("Image link copied")
 
     def _open_page(self, _button) -> None:
-        if not self.post.page_url:
-            return
-        try:
-            Gio.AppInfo.launch_default_for_uri(self.post.page_url, None)
-        except GLib.Error as exc:
-            self._toast(f"Could not open browser: {exc.message}")
+        launch_external(
+            self.post.page_url,
+            parent=self,
+            on_error=self._toast,
+        )
 
     def _activate_tag(self, _button, tag: str) -> None:
         self.close()

@@ -8,10 +8,11 @@ from pathlib import Path
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gio, GLib, Gtk, Pango  # noqa: E402
+from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
 from ..models import Post  # noqa: E402
 from .grid import PostGrid  # noqa: E402
+from .launch import launch_external  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -349,18 +350,24 @@ class DownloadsPage(Gtk.Box):
 
     # -- actions ---------------------------------------------------------
     def _open_file(self, task) -> None:
-        try:
-            Gio.AppInfo.launch_default_for_uri(task.path.as_uri(), None)
-        except GLib.Error as exc:
-            self.on_notice(f"Could not open file: {exc.message}")
+        launch_external(
+            task.path.as_uri(),
+            parent=self,
+            on_error=self.on_notice,
+        )
 
     def _open_folder(self, _button) -> None:
         directory = Path(str(self.settings.get("download_dir"))).expanduser()
         try:
             directory.mkdir(parents=True, exist_ok=True)
-            Gio.AppInfo.launch_default_for_uri(directory.as_uri(), None)
-        except (OSError, GLib.Error) as exc:
+        except OSError as exc:
             self.on_notice(f"Could not open folder: {exc}")
+            return
+        launch_external(
+            directory.as_uri(),
+            parent=self,
+            on_error=self.on_notice,
+        )
 
     def _clear_finished(self, _button) -> None:
         removed = self.manager.clear_finished()

@@ -11,6 +11,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 from ..sources import SourceRegistry  # noqa: E402
+from .launch import launch_external  # noqa: E402
 from .theme import ACCENT_LABELS  # noqa: E402
 
 COLOR_SCHEMES = [("system", "Follow system"), ("light", "Light"), ("dark", "Dark")]
@@ -334,13 +335,16 @@ class PreferencesDialog(Adw.PreferencesDialog):
         directory = self.registry.plugin_directory
         try:
             directory.mkdir(parents=True, exist_ok=True)
-            Gio.AppInfo.launch_default_for_uri(directory.as_uri(), None)
-        except (OSError, GLib.Error) as exc:
+        except OSError as exc:
             self.on_notice(f"Could not open folder: {exc}")
+            return
+        launch_external(directory.as_uri(), parent=self, on_error=self.on_notice)
 
     def _open_docs(self, _row) -> None:
-        Gio.AppInfo.launch_default_for_uri(
-            "https://github.com/HughLyell/mizuki/blob/main/docs/SOURCES.md", None
+        launch_external(
+            "https://github.com/HughLyell/mizuki/blob/main/docs/SOURCES.md",
+            parent=self,
+            on_error=self.on_notice,
         )
 
     # -- downloads -------------------------------------------------------
@@ -373,6 +377,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         directory = Path(str(self.settings.get("download_dir", ""))).expanduser()
         try:
             directory.mkdir(parents=True, exist_ok=True)
-            Gio.AppInfo.launch_default_for_uri(directory.as_uri(), None)
-        except (OSError, GLib.Error) as exc:
+        except OSError as exc:
             self.on_notice(f"Could not open folder: {exc}")
+            return
+        launch_external(directory.as_uri(), parent=self, on_error=self.on_notice)
