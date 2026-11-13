@@ -1,0 +1,22 @@
+#!/bin/sh
+# Self-extracting portable launcher for Mizuki.
+#
+# This exists because AppImage type 2 needs libfuse2 before it can mount its
+# payload. Some current distributions ship FUSE 3 only. This launcher extracts
+# the already-built AppDir to the user cache and runs it without FUSE.
+set -eu
+
+VERSION="@VERSION@"
+SELF="$(readlink -f "$0")"
+CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/mizuki/portable-$VERSION"
+
+if [ ! -x "$CACHE_ROOT/AppRun" ]; then
+    mkdir -p "$CACHE_ROOT"
+    PAYLOAD_LINE="$(awk '/^__MIZUKI_PAYLOAD__$/{print NR + 1; exit}' "$SELF")"
+    tail -n +"$PAYLOAD_LINE" "$SELF" | tar -xz -C "$CACHE_ROOT"
+fi
+
+exec "$CACHE_ROOT/AppRun" "$@"
+exit 0
+
+__MIZUKI_PAYLOAD__

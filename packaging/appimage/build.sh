@@ -117,4 +117,16 @@ rm -f "$OUTPUT"
 ARCH=x86_64 "$APPIMAGETOOL" --appimage-extract-and-run "$APPDIR" "$OUTPUT"
 chmod +x "$OUTPUT"
 
+# FUSE 2 is not installed by default on some current distributions. Ship a
+# single-file self-extracting launcher as a no-FUSE fallback. It contains the
+# same AppDir and runs through the same AppRun wrapper.
+PORTABLE="$DIST/Mizuki-${VERSION}-x86_64.run"
+rm -f "$PORTABLE"
+cp "$ROOT/packaging/appimage/portable-runner" "$PORTABLE"
+sed -i "s/@VERSION@/$VERSION/" "$PORTABLE"
+tar -C "$APPDIR" -czf "$BUILD/mizuki-portable.tar.gz" .
+cat "$BUILD/mizuki-portable.tar.gz" >> "$PORTABLE"
+chmod +x "$PORTABLE"
+
 echo "Built $OUTPUT"
+echo "Built $PORTABLE"
