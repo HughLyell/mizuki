@@ -125,13 +125,19 @@ chmod +x "$APPDIR/AppRun"
 # "open folder" work even when the host has no such helper.
 GIO_LAUNCH_DESKTOP_BIN="$(command -v gio-launch-desktop 2>/dev/null || true)"
 if [ -z "$GIO_LAUNCH_DESKTOP_BIN" ]; then
-    for candidate in /usr/libexec/gio-launch-desktop /usr/lib/*/gio-launch-desktop \
+    for candidate in \
+            /usr/libexec/gio-launch-desktop \
+            /usr/lib/*/glib-2.0/gio-launch-desktop \
+            /usr/lib/*/gio-launch-desktop \
             /usr/local/libexec/gio-launch-desktop; do
         if [ -x "$candidate" ]; then
             GIO_LAUNCH_DESKTOP_BIN="$candidate"
             break
         fi
     done
+fi
+if [ -z "$GIO_LAUNCH_DESKTOP_BIN" ]; then
+    GIO_LAUNCH_DESKTOP_BIN="$(find /usr -xdev -type f -name gio-launch-desktop 2>/dev/null | head -n 1)"
 fi
 if [ -n "$GIO_LAUNCH_DESKTOP_BIN" ]; then
     cp "$GIO_LAUNCH_DESKTOP_BIN" "$APPDIR/usr/bin/gio-launch-desktop"
