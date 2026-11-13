@@ -9,6 +9,18 @@ browser.
 
 - **Stack:** Python 3 + PyGObject + GTK 4 + libadwaita
 
+## Download
+
+Linux builds are available on the [releases page](https://github.com/HughLyell/mizuki/releases/latest):
+
+- **Portable launcher (recommended, no FUSE required):**
+  [Mizuki-0.1.0-x86_64.run](https://github.com/HughLyell/mizuki/releases/download/v0.1.0/Mizuki-0.1.0-x86_64.run)
+- **AppImage:** [Mizuki-0.1.0-x86_64.AppImage](https://github.com/HughLyell/mizuki/releases/download/v0.1.0/Mizuki-0.1.0-x86_64.AppImage)
+  — requires `libfuse2`. If it is unavailable, run the AppImage with
+  `--appimage-extract-and-run`, or use the portable launcher above.
+
+Both builds require glibc 2.39 or newer.
+
 ## Features
 
 - **Modular sources** — Danbooru, Safebooru, Konachan, Yande.re and Zerochan
