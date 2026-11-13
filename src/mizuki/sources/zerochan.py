@@ -20,7 +20,7 @@ from html.parser import HTMLParser
 
 from .. import net
 from ..models import Post, SearchQuery, SourcePage, extension_from_url
-from .base import Source, SourceError
+from .base import META_PREFIXES, Source, SourceError
 
 log = logging.getLogger(__name__)
 
@@ -159,6 +159,7 @@ class ZerochanSource(Source):
     icon = "starred-symbolic"
     supports_nsfw = False
     max_tags = 0
+    tag_separator = " "
     popular_tags = (
         "landscape",
         "scenery",
@@ -200,7 +201,7 @@ class ZerochanSource(Source):
             term = " ".join(term.replace("_", " ").split())
             if not term:
                 continue
-            if term.lower().startswith(("rating:", "order:", "status:")):
+            if term.lower().startswith(META_PREFIXES):
                 continue
             if term not in terms:
                 terms.append(term)
@@ -247,9 +248,11 @@ class ZerochanSource(Source):
         return candidates[:5]
 
     def _find_correction(self, tag: str) -> tuple[str, str] | None:
-        for candidate in self._typo_candidates(tag):
+        # Each candidate costs a request, so keep this tight: a tag that 404s
+        # must not stall the search for tens of seconds.
+        for candidate in self._typo_candidates(tag)[:2]:
             try:
-                html = self._fetch_html(BASE_URL + self._encode_tag_path(candidate), timeout=15)
+                html = self._fetch_html(BASE_URL + self._encode_tag_path(candidate), timeout=8)
             except net.NetworkError:
                 continue
             if "Just a moment" in html and "cloudflare" in html.lower():
@@ -295,6 +298,18 @@ class ZerochanSource(Source):
                 return [[terms[0]], words]
         return [terms]
 
+    def _cache_put(self, cache: dict, key: str, value, *, ttl: float, max_entries: int) -> None:
+        """Store a cache entry, pruning expired entries and capping the size.
+
+        Must be called with ``self._cache_lock`` held.
+        """
+        now = time.time()
+        for stale_key in [k for k, entry in cache.items() if now - entry[0] >= ttl]:
+            cache.pop(stale_key, None)
+        while len(cache) >= max_entries:
+            cache.pop(next(iter(cache)))
+        cache[key] = value
+
     def _fetch_page(self, url: str, timeout: int = 25) -> tuple[str, str]:
         now = time.time()
         with self._cache_lock:
@@ -303,9 +318,7 @@ class ZerochanSource(Source):
                 return cached[1], cached[2]
         html, final_url = net.get_text_with_url(url, headers=self.headers(), timeout=timeout)
         with self._cache_lock:
-            if len(self._html_cache) > 80:
-                self._html_cache.clear()
-            self._html_cache[url] = (now, html, final_url)
+            self._cache_put(self._html_cache, url, (now, html, final_url), ttl=60, max_entries=80)
         return html, final_url
 
     def _fetch_html(self, url: str, timeout: int = 25) -> str:
@@ -336,6 +349,12 @@ class ZerochanSource(Source):
                 posts.append(post)
         return posts
 
+    def _parse_posts_or_raise(self, html: str) -> list[Post]:
+        try:
+            return self._parse_posts(html)
+        except Exception as exc:
+            raise SourceError(f"Could not parse Zerochan's response: {exc}") from exc
+
     def search(self, query: SearchQuery) -> SourcePage:
         original_terms = self.query_tags(query)
         variants = self._tag_variants(query)
@@ -347,10 +366,12 @@ class ZerochanSource(Source):
                 variants = [cached[1]] + [variant for variant in variants if variant != cached[1]]
 
         html: str | None = None
+        posts: list[Post] = []
         chosen_tags: list[str] = []
         corrected_from = ""
         corrected_tag = ""
         no_results_notice = ""
+        member_only = False
         for index, tags in enumerate(variants):
             requested_url = self._url_for_tags(tags, query)
             try:
@@ -364,6 +385,7 @@ class ZerochanSource(Source):
                         html, corrected_tag = correction
                         corrected_from = tags[0]
                         chosen_tags = [corrected_tag]
+                        posts = self._parse_posts_or_raise(html)
                         break
                 no_results_notice = (
                     f"Zerochan has no tag matching '{original_terms[0]}'."
@@ -393,10 +415,7 @@ class ZerochanSource(Source):
                         html, final_url = self._fetch_page(canonical)
             if "Just a moment" in html and "cloudflare" in html.lower():
                 raise SourceError("Zerochan is currently blocking automated requests. Try again later.")
-            try:
-                posts = self._parse_posts(html)
-            except Exception as exc:
-                raise SourceError(f"Could not parse Zerochan's response: {exc}") from exc
+            posts = self._parse_posts_or_raise(html)
             member_only = "members only" in html.lower()
             if posts or member_only or not tags:
                 chosen_tags = tags
@@ -416,18 +435,18 @@ class ZerochanSource(Source):
         if html is None:
             return SourcePage(posts=[], has_more=False, notice=no_results_notice)
 
-        try:
-            posts = self._parse_posts(html)
-        except Exception as exc:
-            raise SourceError(f"Could not parse Zerochan's response: {exc}") from exc
-
         if chosen_tags:
             with self._cache_lock:
-                self._resolution_cache[resolution_key] = (now, list(chosen_tags))
+                self._cache_put(
+                    self._resolution_cache,
+                    resolution_key,
+                    (now, list(chosen_tags)),
+                    ttl=_SUPPLEMENT_TTL,
+                    max_entries=128,
+                )
 
         has_more = bool(posts) and query.sort != "random"
         notice = ""
-        member_only = "members only" in html.lower()
         supplement_tag = corrected_tag or (chosen_tags[0] if len(chosen_tags) == 1 else "")
         if (
             member_only
@@ -582,7 +601,13 @@ class ZerochanSource(Source):
             reverse=True,
         )
         with self._cache_lock:
-            self._supplement_cache[key] = (now, result, notice)
+            self._cache_put(
+                self._supplement_cache,
+                key,
+                (now, result, notice),
+                ttl=_SUPPLEMENT_TTL,
+                max_entries=64,
+            )
         return result, notice
 
     @staticmethod
@@ -641,7 +666,7 @@ class ZerochanSource(Source):
             return None
         if not full or full == raw_thumb or full == thumb:
             full = self._construct_full(item) or full or thumb
-        preview = re.sub(r"\.full\.(\d+)\.\w+$", r".600.\1.jpg", full)
+        preview = re.sub(r"\.full\.(\d+)\.(\w+)$", r".600.\1.\2", full)
         if preview == full and not re.search(r"\.(?:jpg|jpeg|png|gif|webp)$", preview, re.I):
             preview = thumb
         width, height = self._dimensions(item)

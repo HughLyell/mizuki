@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import gi
 
@@ -62,10 +62,14 @@ class DiscoverPage(Gtk.Box):
         self._page = 1
         self._query = SearchQuery(safe=settings.get("safe_search", True))
         self._result_posts: list[Post] = []
+        self._page_start_count = 0
         self._filter_timeout_id = 0
         self._filter_syncing = False
         self._suggest_generation = 0
         self._suggest_timeout_id = 0
+        self._suggest_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="mizuki-suggest"
+        )
 
         self.set_hexpand(True)
         self.set_vexpand(True)
@@ -354,6 +358,16 @@ class DiscoverPage(Gtk.Box):
     def refresh_favorites(self) -> None:
         self.grid.refresh_favorites()
 
+    def shutdown(self) -> None:
+        """Stop background suggestion work; called when the window closes."""
+        if self._suggest_timeout_id:
+            GLib.source_remove(self._suggest_timeout_id)
+            self._suggest_timeout_id = 0
+        if self._filter_timeout_id:
+            GLib.source_remove(self._filter_timeout_id)
+            self._filter_timeout_id = 0
+        self._suggest_executor.shutdown(wait=False, cancel_futures=True)
+
     def search_tag(self, tag: str) -> None:
         tag = tag.strip()
         if not tag:
@@ -371,6 +385,7 @@ class DiscoverPage(Gtk.Box):
             self._query = SearchQuery(text=text, page=1, limit=limit, safe=safe, sort=sort)
             self._has_more = False
             self._result_posts = []
+            self._page_start_count = 0
             self.notice_label.set_visible(False)
             self.grid.clear()
         else:
@@ -378,6 +393,7 @@ class DiscoverPage(Gtk.Box):
                 return
             self._page += 1
             self._query = self._query.with_page(self._page)
+            self._page_start_count = len(self._result_posts)
         if record and text:
             self.settings.add_recent_search(text)
             self._update_empty_suggestions()
@@ -420,30 +436,30 @@ class DiscoverPage(Gtk.Box):
         self.run_search(reset=False)
 
     # -- search results --------------------------------------------------
-    def _on_results(self, posts: list[Post], has_more: bool, errors: list[str]) -> None:
+    def _on_results(self, posts: list[Post], has_more: bool, errors: list[str], done: bool) -> None:
         if not self._loading:
             return
-        self._loading = False
-        before_raw = len(self._result_posts)
-        self._has_more = has_more
         if posts:
             self._result_posts.extend(posts)
-        visible = [post for post in posts if self._post_matches_filter(post)]
-        if visible:
-            self.grid.append(visible)
-        self.grid.set_state(loading=False, has_more=has_more)
-        if self._query.page > 1 and len(self._result_posts) == before_raw:
-            # A page made entirely of duplicates; stop rather than hammering
-            # the source while the user is at the bottom of the grid.
-            self._has_more = False
-            self.grid.set_state(has_more=False)
+            visible = [post for post in posts if self._post_matches_filter(post)]
+            if visible:
+                self.grid.append(visible)
+        self._has_more = has_more
+        self.grid.set_state(loading=not done, has_more=has_more)
         self._update_result_state(errors=errors)
+        if not done:
+            return
+        self._loading = False
         if errors:
             self.on_warning(errors[0] if len(errors) == 1 else f"{len(errors)} sources could not be reached.")
             log.warning("Search completed with errors: %s", " | ".join(errors))
-        if not posts and not errors and self._has_more:
+        if self._has_more and not errors and len(self._result_posts) == self._page_start_count:
+            # A page made entirely of duplicates (or nothing at all); stop
+            # rather than hammering the source while the user is at the
+            # bottom of the grid.
             self._has_more = False
             self.grid.set_state(has_more=False)
+            self._update_result_state()
 
     def _on_error(self, message: str) -> None:
         self._loading = False
@@ -593,7 +609,7 @@ class DiscoverPage(Gtk.Box):
                 names = []
             GLib.idle_add(self._deliver_suggestions, generation, names)
 
-        threading.Thread(target=fetch, daemon=True, name="mizuki-suggest").start()
+        self._suggest_executor.submit(fetch)
         return False
 
     def _deliver_suggestions(self, generation: int, names: list[str]):

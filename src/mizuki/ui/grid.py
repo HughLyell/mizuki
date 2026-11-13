@@ -60,6 +60,8 @@ class PostGrid(Gtk.ScrolledWindow):
         self._posts: list[Post] = []
         self._rows: list[Gtk.Box] = []
         self._layout_width = 0
+        self._allocated_width = 0
+        self._relayout_timer_id = 0
         self._loading = False
         self._has_more = False
         self._size = settings.get("grid_size", "comfortable")
@@ -111,7 +113,7 @@ class PostGrid(Gtk.ScrolledWindow):
         adjustment = self.get_vadjustment()
         adjustment.connect("value-changed", self._on_scrolled)
         self._sync_footer()
-        GLib.timeout_add(250, self._poll_width)
+        self.connect("map", lambda *_: GLib.idle_add(self._relayout_check))
 
     # -- public API ------------------------------------------------------
     @property
@@ -134,7 +136,7 @@ class PostGrid(Gtk.ScrolledWindow):
 
     def append(self, posts: list[Post]) -> list[ImageCard]:
         added: list[ImageCard] = []
-        favorite_keys = {post.key for post in self.favorites.all()}
+        favorite_keys = self.favorites.keys()
         blurred = bool(self.settings.get("blur_nsfw", True))
         target_height, _, _ = GRID_SIZES[self._size]
         for post in posts:
@@ -192,7 +194,7 @@ class PostGrid(Gtk.ScrolledWindow):
             self._relayout(content_width, force=True)
 
     def refresh_favorites(self) -> None:
-        favorite_keys = {post.key for post in self.favorites.all()}
+        favorite_keys = self.favorites.keys()
         for key, card in self._cards.items():
             card.set_favorite(key in favorite_keys)
 
@@ -267,15 +269,28 @@ class PostGrid(Gtk.ScrolledWindow):
             return 1100
         return max(240, min(self._max_width, outer_width - GRID_HORIZONTAL_MARGIN))
 
-    def _poll_width(self):
-        try:
-            width = self._available_width()
-        except Exception:
-            return False
+    def do_size_allocate(self, width: int, height: int, baseline: int) -> None:
+        Gtk.ScrolledWindow.do_size_allocate(self, width, height, baseline)
+        if width == self._allocated_width:
+            return
+        self._allocated_width = width
+        # Debounce resize storms: a window drag delivers many allocations, and
+        # a full justified relayout re-parents every card.
+        if self._relayout_timer_id:
+            GLib.source_remove(self._relayout_timer_id)
+        self._relayout_timer_id = GLib.timeout_add(50, self._relayout_after_resize)
+
+    def _relayout_after_resize(self):
+        self._relayout_timer_id = 0
+        self._relayout_check()
+        return False
+
+    def _relayout_check(self):
+        width = self._available_width()
         if width > 0 and abs(width - self._layout_width) >= 2:
             log.debug("Reflowing gallery at width %s (was %s)", width, self._layout_width)
             self._relayout(width)
-        return True
+        return False
 
     def _sync_footer(self) -> None:
         if not self.show_footer:

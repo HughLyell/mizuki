@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 __all__ = ["Source", "SourceError", "SourceRegistry", "merge_pages"]
 
-_BUILTINS: "OrderedDict[str, tuple[str, str]]" = OrderedDict(
+_BUILTINS: OrderedDict[str, tuple[str, str]] = OrderedDict(
     [
         ("danbooru", ("mizuki.sources.danbooru", "DanbooruSource")),
         ("safebooru", ("mizuki.sources.safebooru", "SafebooruSource")),
@@ -31,7 +31,7 @@ class SourceRegistry:
     """Lazily instantiate built-in sources and discover user plugins."""
 
     def __init__(self, *, include_plugins: bool = True) -> None:
-        self._sources: "OrderedDict[str, Source]" = OrderedDict()
+        self._sources: OrderedDict[str, Source] = OrderedDict()
         self._plugins: list[str] = []
         self.load_builtins()
         if include_plugins:

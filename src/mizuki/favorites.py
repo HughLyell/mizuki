@@ -62,6 +62,10 @@ class FavoriteStore:
     def all(self) -> list[Post]:
         return [favorite.post for favorite in reversed(list(self._items.values()))]
 
+    def keys(self) -> set[str]:
+        """Post keys of every favourite, for cheap membership checks."""
+        return set(self._items.keys())
+
     def count(self) -> int:
         return len(self._items)
 

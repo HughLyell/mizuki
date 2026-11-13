@@ -10,7 +10,14 @@ from __future__ import annotations
 import json
 
 from .. import net
-from ..models import IMAGE_EXTENSIONS, Post, SearchQuery, SourcePage, extension_from_url, normalize_rating
+from ..models import (
+    IMAGE_EXTENSIONS,
+    Post,
+    SearchQuery,
+    SourcePage,
+    extension_from_url,
+    normalize_rating,
+)
 from .base import Source, SourceError
 
 
@@ -39,11 +46,9 @@ class SafebooruSource(Source):
         return {"Accept": "application/json", "Referer": "https://safebooru.org/"}
 
     def search_tags(self, query: SearchQuery, tags_override: list[str] | None = None) -> list[str]:
-        tags = [
-            tag
-            for tag in (tags_override if tags_override is not None else self.query_tags(query))
-            if not tag.lstrip("-").lower().startswith(("rating:", "order:", "status:"))
-        ]
+        tags = self.strip_meta_tags(
+            tags_override if tags_override is not None else self.query_tags(query)
+        )
         if query.sort == "score":
             tags.append("sort:score:desc")
         elif query.sort == "random":
@@ -63,10 +68,11 @@ class SafebooruSource(Source):
             if page.posts:
                 self.remember_variant(query, tags)
                 return page
+        # A hard error must not be hidden behind an earlier empty variant.
+        if last_error is not None and (last_page is None or not last_page.posts):
+            raise last_error
         if last_page is not None:
             return last_page
-        if last_error is not None:
-            raise last_error
         return SourcePage(posts=[], has_more=False)
 
     def _search_tags(self, query: SearchQuery, tags_override: list[str]) -> SourcePage:

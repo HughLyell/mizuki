@@ -15,5 +15,23 @@ jobs:
           python-version: "3.12"
       - name: Byte-compile
         run: python -m compileall -q src tests
+      - name: Ruff
+        run: |
+          python -m pip install ruff
+          ruff check src tests
+      - name: Version consistency
+        run: |
+          version="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/mizuki/__init__.py)"
+          test -n "$version"
+          grep -q "version: '$version'" meson.build
+          grep -q "release version=\"$version\"" data/io.github.hughlyell.Mizuki.metainfo.xml
       - name: Unit tests
         run: PYTHONPATH=src python -m unittest discover -s tests -v
+      - name: GUI smoke test
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 xvfb
+          # The unit tests use setup-python, but python3-gi is only installed
+          # for the system interpreter, so the smoke test must use it.
+          PYTHONPATH=src MIZUKI_DATA_DIR=data \
+            timeout 120 xvfb-run -a /usr/bin/python3 -m mizuki --smoke-test

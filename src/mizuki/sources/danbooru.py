@@ -33,19 +33,24 @@ class DanbooruSource(Source):
         return {"Accept": "application/json", "Referer": self.base_url + "/"}
 
     def search_tags(self, query: SearchQuery, tags_override: list[str] | None = None) -> list[str]:
-        tags = [
-            tag
-            for tag in (tags_override if tags_override is not None else self.query_tags(query))
-            if not tag.lstrip("-").lower().startswith(("rating:", "order:", "status:"))
-        ]
+        tags = self.strip_meta_tags(
+            tags_override if tags_override is not None else self.query_tags(query)
+        )
         if self.always_safe or query.safe:
             tags.append("rating:g")
-        if query.sort == "score":
-            tags.append("order:score")
-        elif query.sort == "random":
-            tags.append("order:random")
-        elif query.sort == "relevance":
-            tags.append("order:rank")
+        order = {
+            "score": "order:score",
+            "random": "order:random",
+            "relevance": "order:rank",
+        }.get(query.sort)
+        if order:
+            # Danbooru's anonymous API allows two terms per query. `order:`
+            # counts against that budget while `rating:` does not, so the sort
+            # metatag is only sent when there is a free slot; otherwise the
+            # search would fail with HTTP 422 instead of returning results.
+            user_terms = len(self.strip_meta_tags(tags))
+            if user_terms + 1 <= self.max_tags:
+                tags.append(order)
         return tags
 
     def search(self, query: SearchQuery) -> SourcePage:
@@ -63,10 +68,11 @@ class DanbooruSource(Source):
             if page.posts:
                 self.remember_variant(query, tags)
                 return page
+        # A hard error must not be hidden behind an earlier empty variant.
+        if last_error is not None and (last_page is None or not last_page.posts):
+            raise last_error
         if last_page is not None:
             return last_page
-        if last_error is not None:
-            raise last_error
         raise SourceError(
             "Danbooru's anonymous API allows at most two tags per search. "
             "Try fewer tags, or use another source."
@@ -95,7 +101,17 @@ class DanbooruSource(Source):
             if query.safe and not post.is_safe:
                 continue
             posts.append(post)
-        return SourcePage(posts=posts, has_more=len(payload) >= limit)
+        notice = ""
+        if (
+            query.sort in ("score", "random", "relevance")
+            and not any(tag.startswith("order:") for tag in tags)
+            and self.max_tags
+        ):
+            notice = (
+                "Danbooru's anonymous API allows two tags per search, so the "
+                "sort order was ignored to fit every tag into the query."
+            )
+        return SourcePage(posts=posts, has_more=len(payload) >= limit, notice=notice)
 
     def _parse(self, raw: dict) -> Post | None:
         ext = str(raw.get("file_ext") or "").lower()

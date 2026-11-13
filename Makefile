@@ -11,6 +11,7 @@ test:
 
 lint:
 	PYTHONPATH=src $(PYTHON) -m compileall -q src tests
+	$(PYTHON) -m ruff check src tests
 
 build:
 	@test -d build || meson setup build --prefix=$(PREFIX)

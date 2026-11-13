@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 import threading
 import uuid
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 from gi.repository import GLib
 
@@ -143,7 +143,7 @@ class DownloadManager:
                 cancel=task.cancel_event,
             )
         except net.Cancelled:
-            task.path.unlink(missing_ok=True)
+            # net.download already removed its .part file; nothing else to do.
             self._update(task, status="cancelled")
         except net.NetworkError as exc:
             self._update(task, status="failed", error=str(exc))

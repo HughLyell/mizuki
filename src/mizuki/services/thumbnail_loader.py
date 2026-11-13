@@ -7,9 +7,9 @@ import logging
 import os
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Callable
 
 import gi
 
@@ -32,7 +32,9 @@ def _discard_texture(_texture) -> None:
 class ThumbnailLoader:
     """Load remote images off the main thread and return ``Gdk.Texture`` objects.
 
-    Textures are cached in an LRU map. Disk caching avoids re-downloading
+    Textures are cached in an LRU map bounded by a byte budget: decoded
+    previews are several megabytes each, so an entry-count-only cache could
+    grow to hundreds of megabytes. Disk caching avoids re-downloading
     thumbnails and opened previews when browsing or revisiting the same tags.
     """
 
@@ -40,12 +42,16 @@ class ThumbnailLoader:
         self,
         cache_dir: Path | None = None,
         *,
-        max_textures: int = 240,
+        max_textures: int = 160,
+        max_memory_bytes: int = 256 * 1024 * 1024,
         workers: int = 6,
     ) -> None:
         self.cache_dir = Path(cache_dir) if cache_dir else config.THUMB_CACHE_DIR
         self.max_textures = max_textures
-        self._memory: "OrderedDict[str, Gdk.Texture]" = OrderedDict()
+        self.max_memory_bytes = max_memory_bytes
+        self._memory: OrderedDict[str, Gdk.Texture] = OrderedDict()
+        self._memory_sizes: dict[str, int] = {}
+        self._memory_bytes = 0
         self._inflight: dict[str, list[TextureCallback]] = {}
         self._lock = threading.Lock()
         self._executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="mizuki-image")
@@ -139,11 +145,7 @@ class ThumbnailLoader:
             except Exception:
                 texture = None
         if texture is not None:
-            with self._lock:
-                self._memory[url] = texture
-                self._memory.move_to_end(url)
-                while len(self._memory) > self.max_textures:
-                    self._memory.popitem(last=False)
+            self._remember(url, texture)
         with self._lock:
             callbacks = self._inflight.pop(url, [])
         for callback in callbacks:
@@ -152,6 +154,30 @@ class ThumbnailLoader:
             except Exception:
                 log.exception("Thumbnail callback failed")
         return False
+
+    @staticmethod
+    def _texture_bytes(texture) -> int:
+        try:
+            return max(1, texture.get_width()) * max(1, texture.get_height()) * 4
+        except Exception:
+            return 0
+
+    def _remember(self, url: str, texture) -> None:
+        """Cache a texture, evicting least-recently-used entries over budget."""
+        size = self._texture_bytes(texture)
+        with self._lock:
+            if url in self._memory:
+                self._memory_bytes -= self._memory_sizes.pop(url, 0)
+                self._memory.pop(url)
+            self._memory[url] = texture
+            self._memory_sizes[url] = size
+            self._memory_bytes += size
+            while self._memory and (
+                self._memory_bytes > self.max_memory_bytes
+                or len(self._memory) > self.max_textures
+            ):
+                evicted_url, _ = self._memory.popitem(last=False)
+                self._memory_bytes -= self._memory_sizes.pop(evicted_url, 0)
 
     def _cache_path(self, url: str) -> Path:
         digest = hashlib.sha1(url.encode("utf-8")).hexdigest()

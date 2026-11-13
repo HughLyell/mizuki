@@ -128,7 +128,7 @@ def build_justified_rows(
             RowLayout(
                 tiles=tuple(
                     TileLayout(post=post, width=tile_width, height=rounded_height)
-                    for post, tile_width in zip(row_posts, widths)
+                    for post, tile_width in zip(row_posts, widths, strict=True)
                 ),
                 height=rounded_height,
                 justified=justified,

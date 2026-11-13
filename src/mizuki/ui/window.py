@@ -48,6 +48,7 @@ class MizukiWindow(Adw.ApplicationWindow):
         self._syncing_sidebar = False
         self._sidebar_visible = bool(self.settings.get("sidebar_visible", True))
         self._last_sidebar_width = 272
+        self._relayout_timer_id = 0
         self._source_selection_guard = False
         self._changing_source = False
         self._preferences: PreferencesDialog | None = None
@@ -541,7 +542,9 @@ class MizukiWindow(Adw.ApplicationWindow):
             self.sidebar_toggle.update_property(
                 [Gtk.AccessibleProperty.LABEL], [label]
             )
-        GLib.timeout_add(80, self._relayout_galleries)
+        if self._relayout_timer_id:
+            GLib.source_remove(self._relayout_timer_id)
+        self._relayout_timer_id = GLib.timeout_add(80, self._relayout_galleries)
 
     def _visible_grids(self) -> list:
         grids = []
@@ -552,6 +555,7 @@ class MizukiWindow(Adw.ApplicationWindow):
         return grids
 
     def _relayout_galleries(self):
+        self._relayout_timer_id = 0
         if hasattr(self, "discover"):
             self.discover.grid.request_relayout()
         if hasattr(self, "favorites_page"):
@@ -629,9 +633,12 @@ class MizukiWindow(Adw.ApplicationWindow):
             self.discover.run_search(reset=True)
 
     def _search_tag(self, tag: str) -> None:
-        source_id = self.discover.current_source_id()
-        if source_id != "zerochan":
-            tag = tag.replace(" ", "_")
+        source = self.registry.get(self.discover.current_source_id())
+        if source is not None:
+            tag = source.normalize_tag(tag)
+        else:
+            # "All sources": default to booru underscore syntax.
+            tag = "_".join(tag.split())
         self.switch_page("discover", refresh=False)
         self.discover.search_tag(tag)
 
@@ -871,6 +878,13 @@ class MizukiWindow(Adw.ApplicationWindow):
             self.settings.unsubscribe(key, callback)
         self._settings_subscriptions.clear()
         self.downloads.remove_listener(self._on_download_event)
+        if self._relayout_timer_id:
+            GLib.source_remove(self._relayout_timer_id)
+            self._relayout_timer_id = 0
+        try:
+            self.discover.shutdown()
+        except Exception:
+            pass
         try:
             self.downloads_page.shutdown()
         except Exception:

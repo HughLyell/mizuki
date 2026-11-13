@@ -8,8 +8,7 @@ import os
 import sys
 import time
 
-from . import APP_NAME, __version__
-from . import config
+from . import APP_NAME, __version__, config
 
 
 def _configure_logging() -> None:

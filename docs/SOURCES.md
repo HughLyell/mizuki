@@ -32,7 +32,8 @@ class MySource(Source):
     homepage = "https://example.org"
     icon = "image-x-generic-symbolic"
     supports_nsfw = True
-    max_tags = 0                    # documented source limit, 0 = no limit
+    max_tags = 0                    # max user tags per query the source accepts, 0 = no limit
+    tag_separator = "_"             # "_" for boorus, " " for space-separated tags
     popular_tags = ("landscape", "sky", "1girl")
 
     def search(self, query: SearchQuery) -> SourcePage:
@@ -143,9 +144,19 @@ Set `supports_nsfw = False` if the source has no adult content. Such sources
 stay filtered even when the global SFW switch is off. Never ignore
 `query.safe` for an NSFW-capable source.
 
-Strip user-provided `rating:` / `order:` metatags before adding your own, or
-users could bypass the SFW filter. Built-in adapters expose a `search_tags()`
-helper for this; you can copy the pattern.
+Strip user-provided `rating:` / `order:` / `status:` metatags before adding
+your own, or users could bypass the SFW filter. The `Source.strip_meta_tags()`
+helper does this, and the built-in `search_tags()` pattern shows how to add the
+source's own rating filter and sort order afterwards.
+
+Keep the total number of terms you send within the source's limit — some APIs
+count `order:` sort metatags against the tag budget. If a sort metatag would
+push a query over the limit, drop the sort rather than failing the search.
+
+Use `Source.normalize_tag()` to convert a clicked tag to your source's
+spelling when tag names can contain spaces: with the default
+`tag_separator = "_"` it turns `blue sky` into `blue_sky`; with
+`tag_separator = " "` it turns `blue_sky` into `blue sky`.
 
 ### Pagination
 

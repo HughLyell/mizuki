@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import weakref
+
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -262,9 +264,21 @@ class ImageDetailDialog(Adw.Dialog):
         if not url:
             self._preview_failed("No preview is available.")
             return
+        self._load_texture(url)
+
+    def _load_texture(self, url: str) -> None:
+        # The dialog may be closed before the fetch finishes; keep a weak
+        # callback so the loader does not keep the dialog alive.
+        self_ref = weakref.ref(self)
+
+        def _deliver(texture, ref=self_ref) -> None:
+            dialog = ref()
+            if dialog is not None:
+                dialog._on_preview(texture)
+
         self.loader.load(
             url,
-            self._on_preview,
+            _deliver,
             referer=self.post.referer,
             store_disk=True,
         )
@@ -286,12 +300,7 @@ class ImageDetailDialog(Adw.Dialog):
             and self.post.thumb_url
             and self.post.thumb_url != self.post.preview_url
         ):
-            self.loader.load(
-                self.post.thumb_url,
-                self._on_preview,
-                referer=self.post.referer,
-                store_disk=True,
-            )
+            self._load_texture(self.post.thumb_url)
             return
         if self._thumbnail_texture is not None:
             # Keep the instant thumbnail visible instead of replacing it with

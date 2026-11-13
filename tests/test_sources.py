@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+import time
 import unittest
 
-from mizuki.models import SearchQuery
-from mizuki.sources.base import merge_pages
-from mizuki.models import Post, SourcePage
+from mizuki.models import Post, SearchQuery, SourcePage
+from mizuki.sources.base import SourceError, merge_pages
 from mizuki.sources.danbooru import DanbooruSource
 from mizuki.sources.moebooru import KonachanSource, moebooru_rating
 from mizuki.sources.safebooru import SafebooruSource
 from mizuki.sources.zerochan import ZerochanSource, _GalleryParser
-
 
 ZEROCHAN_FIXTURE = """
 <ul id="thumbs2" class="medium-thumbs">
@@ -123,6 +122,116 @@ class DanbooruTagTests(unittest.TestCase):
         self.assertEqual(variants, [["landscape", "-monochrome"]])
 
 
+class DanbooruTagBudgetTests(unittest.TestCase):
+    """The anonymous API allows two terms per query; `order:` counts, `rating:` does not."""
+
+    def test_order_term_dropped_with_two_tags(self) -> None:
+        source = DanbooruSource()
+        query = SearchQuery(text="1girl landscape", safe=True, sort="score")
+        self.assertEqual(
+            source.search_tags(query),
+            ["1girl", "landscape", "rating:g"],
+        )
+
+    def test_order_term_kept_with_one_tag(self) -> None:
+        source = DanbooruSource()
+        query = SearchQuery(text="1girl", safe=True, sort="score")
+        self.assertEqual(
+            source.search_tags(query),
+            ["1girl", "rating:g", "order:score"],
+        )
+
+    def test_order_term_dropped_with_two_tags_and_no_safe_filter(self) -> None:
+        source = DanbooruSource()
+        query = SearchQuery(text="1girl landscape", safe=False, sort="random")
+        self.assertEqual(source.search_tags(query), ["1girl", "landscape"])
+
+    def test_single_tag_random_keeps_order(self) -> None:
+        source = DanbooruSource()
+        query = SearchQuery(text="sky", safe=False, sort="random")
+        self.assertEqual(source.search_tags(query), ["sky", "order:random"])
+
+
+class SearchErrorPropagationTests(unittest.TestCase):
+    """A hard error must not be hidden behind an earlier empty variant."""
+
+    @staticmethod
+    def make_post() -> Post:
+        return Post(
+            id="1",
+            source="danbooru",
+            source_name="Danbooru",
+            thumb_url="",
+            preview_url="",
+            file_url="",
+            page_url="",
+        )
+
+    def test_error_not_masked_by_empty_variant(self) -> None:
+        source = DanbooruSource()
+
+        def fake_search(query, tags):
+            if len(tags) == 1:
+                return SourcePage(posts=[], has_more=False)
+            raise SourceError("HTTP 422: TagLimitError")
+
+        source._search_tags = fake_search  # type: ignore[method-assign]
+        with self.assertRaises(SourceError):
+            source.search(SearchQuery(text="hatsune miku", safe=True))
+
+    def test_empty_page_returned_when_no_error(self) -> None:
+        source = DanbooruSource()
+        source._search_tags = lambda query, tags: SourcePage(posts=[], has_more=False)  # type: ignore[method-assign]
+        page = source.search(SearchQuery(text="nothing", safe=True))
+        self.assertEqual(page.posts, [])
+
+    def test_posts_returned_immediately(self) -> None:
+        source = DanbooruSource()
+        source._search_tags = lambda query, tags: SourcePage(posts=[self.make_post()], has_more=True)  # type: ignore[method-assign]
+        page = source.search(SearchQuery(text="x", safe=True))
+        self.assertEqual(len(page.posts), 1)
+
+    def test_safebooru_error_not_masked(self) -> None:
+        source = SafebooruSource()
+
+        def fake_search(query, tags):
+            if len(tags) == 1:
+                return SourcePage(posts=[], has_more=False)
+            raise SourceError("HTTP 503")
+
+        source._search_tags = fake_search  # type: ignore[method-assign]
+        with self.assertRaises(SourceError):
+            source.search(SearchQuery(text="hatsune miku", safe=True))
+
+    def test_moebooru_error_not_masked(self) -> None:
+        source = KonachanSource()
+
+        def fake_search(query, tags_override):
+            if len(tags_override) == 1:
+                return SourcePage(posts=[], has_more=False)
+            raise SourceError("HTTP 503")
+
+        source._search_tags = fake_search  # type: ignore[method-assign]
+        with self.assertRaises(SourceError):
+            source.search(SearchQuery(text="hatsune miku", safe=True))
+
+
+class SourceTagHelpersTests(unittest.TestCase):
+    def test_strip_meta_tags(self) -> None:
+        source = DanbooruSource()
+        self.assertEqual(
+            source.strip_meta_tags(["1girl", "rating:g", "-order:score", "sky"]),
+            ["1girl", "sky"],
+        )
+
+    def test_normalize_tag_uses_source_separator(self) -> None:
+        self.assertEqual(DanbooruSource().normalize_tag("blue sky"), "blue_sky")
+        self.assertEqual(DanbooruSource().normalize_tag("blue_sky"), "blue_sky")
+        self.assertEqual(ZerochanSource().normalize_tag("blue_sky"), "blue sky")
+        self.assertEqual(ZerochanSource().normalize_tag("blue  sky"), "blue sky")
+        self.assertEqual(DanbooruSource().normalize_tag(""), "")
+
+
 class ZerochanTests(unittest.TestCase):
     def test_url_multi_tag(self) -> None:
         source = ZerochanSource()
@@ -213,6 +322,38 @@ class ZerochanTests(unittest.TestCase):
     def test_typo_candidates_collapse_duplicate_letters(self) -> None:
         self.assertIn("Shylily", ZerochanSource._typo_candidates("Shylilly"))
         self.assertEqual(ZerochanSource._typo_candidates("landscape"), [])
+
+    def test_preview_preserves_full_extension(self) -> None:
+        source = ZerochanSource()
+        post = source._to_post(
+            {
+                "id": "123",
+                "thumb": "https://s3.zerochan.net/240/12/34/123.jpg",
+                "full": "https://static.zerochan.net/Artwork.full.123.png",
+                "title": "",
+                "alt": "",
+                "tags": [],
+                "primary": "",
+                "width": 0,
+                "height": 0,
+            }
+        )
+        assert post is not None
+        self.assertEqual(post.preview_url, "https://static.zerochan.net/Artwork.600.123.png")
+        self.assertEqual(post.file_url, "https://static.zerochan.net/Artwork.full.123.png")
+
+    def test_cache_put_prunes_expired_and_caps_size(self) -> None:
+        source = ZerochanSource()
+        cache: dict[str, tuple[float, str]] = {}
+        now = time.time()
+        cache["old"] = (now - 400, "stale")
+        for index in range(10):
+            cache[f"fresh-{index}"] = (now, str(index))
+        with source._cache_lock:
+            source._cache_put(cache, "new", (now, "new"), ttl=300, max_entries=10)
+        self.assertNotIn("old", cache)
+        self.assertIn("new", cache)
+        self.assertLessEqual(len(cache), 10)
 
 
 class MergeTests(unittest.TestCase):

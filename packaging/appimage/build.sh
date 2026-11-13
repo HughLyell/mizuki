@@ -13,8 +13,20 @@ TOOLS="$BUILD/tools"
 VERSION="$(sed -n "s/^__version__ = \"\(.*\)\"/\1/p" "$ROOT/src/mizuki/__init__.py")"
 VERSION="${VERSION:-0.1.0}"
 APP_ID="io.github.hughlyell.Mizuki"
+# Target architecture for the linuxdeploy/appimagetool binaries and the output
+# filenames. Defaults to the build machine's architecture.
+ARCH="${ARCH:-$(uname -m)}"
 
 mkdir -p "$BUILD" "$DIST" "$TOOLS"
+
+# Validate the shipped metadata before doing any heavy lifting.
+if command -v desktop-file-validate >/dev/null 2>&1; then
+    desktop-file-validate "$ROOT/data/$APP_ID.desktop"
+fi
+if command -v appstreamcli >/dev/null 2>&1; then
+    appstreamcli validate --no-net "$ROOT/data/$APP_ID.metainfo.xml" \
+        || echo "warning: appstreamcli validation reported issues" >&2
+fi
 
 if ! command -v pyinstaller >/dev/null 2>&1; then
     echo "pyinstaller is required (python3 -m pip install pyinstaller)" >&2
@@ -85,20 +97,20 @@ download() {
 }
 
 download \
-    "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" \
-    "$TOOLS/linuxdeploy"
+    "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${ARCH}.AppImage" \
+    "$TOOLS/linuxdeploy-${ARCH}"
 if [ ! -x "$TOOLS/linuxdeploy-plugin-gtk.sh" ]; then
     wget -q -O "$TOOLS/linuxdeploy-plugin-gtk.sh" \
         "https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh"
     chmod +x "$TOOLS/linuxdeploy-plugin-gtk.sh"
 fi
-export LINUXDEPLOY="$TOOLS/linuxdeploy"
+export LINUXDEPLOY="$TOOLS/linuxdeploy-${ARCH}"
 export DEPLOY_GTK_VERSION=4
 
 # AppImages need FUSE to self-mount; use the extract-and-run fallback in build
 # containers where FUSE is unavailable.
 LINUXDEPLOY_ARGS=(--appimage-extract-and-run)
-"$TOOLS/linuxdeploy" "${LINUXDEPLOY_ARGS[@]}" \
+"$LINUXDEPLOY" "${LINUXDEPLOY_ARGS[@]}" \
     --appdir "$APPDIR" \
     --plugin gtk
 
@@ -107,20 +119,20 @@ LINUXDEPLOY_ARGS=(--appimage-extract-and-run)
 cp "$ROOT/packaging/appimage/AppRun" "$APPDIR/AppRun"
 chmod +x "$APPDIR/AppRun"
 
-APPIMAGETOOL="$TOOLS/appimagetool"
+APPIMAGETOOL="$TOOLS/appimagetool-${ARCH}"
 download \
-    "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" \
+    "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${ARCH}.AppImage" \
     "$APPIMAGETOOL"
 
-OUTPUT="$DIST/Mizuki-${VERSION}-x86_64.AppImage"
+OUTPUT="$DIST/Mizuki-${VERSION}-${ARCH}.AppImage"
 rm -f "$OUTPUT"
-ARCH=x86_64 "$APPIMAGETOOL" --appimage-extract-and-run "$APPDIR" "$OUTPUT"
+ARCH="$ARCH" "$APPIMAGETOOL" --appimage-extract-and-run "$APPDIR" "$OUTPUT"
 chmod +x "$OUTPUT"
 
 # FUSE 2 is not installed by default on some current distributions. Ship a
 # single-file self-extracting launcher as a no-FUSE fallback. It contains the
 # same AppDir and runs through the same AppRun wrapper.
-PORTABLE="$DIST/Mizuki-${VERSION}-x86_64.run"
+PORTABLE="$DIST/Mizuki-${VERSION}-${ARCH}.run"
 rm -f "$PORTABLE"
 cp "$ROOT/packaging/appimage/portable-runner" "$PORTABLE"
 sed -i "s/@VERSION@/$VERSION/" "$PORTABLE"

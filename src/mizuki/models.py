@@ -116,7 +116,7 @@ def parse_filter_tags(text: str) -> list[str]:
     return tags
 
 
-def post_matches_filter(post: "Post", text: str) -> bool:
+def post_matches_filter(post: Post, text: str) -> bool:
     """Return True if ``post`` contains every comma-separated filter tag."""
     wanted = parse_filter_tags(text)
     if not wanted:
@@ -199,8 +199,15 @@ class Post:
             "referer": self.referer,
         }
 
+    @staticmethod
+    def _coerce_int(value: object) -> int:
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
     @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "Post":
+    def from_dict(cls, data: dict[str, object]) -> Post:
         raw_tags = data.get("tags") or []
         if not isinstance(raw_tags, (list, tuple)):
             raw_tags = []
@@ -213,13 +220,13 @@ class Post:
             preview_url=str(data.get("preview_url", "")),
             file_url=str(data.get("file_url", "")),
             page_url=str(data.get("page_url", "")),
-            width=int(data.get("width") or 0),
-            height=int(data.get("height") or 0),
+            width=cls._coerce_int(data.get("width")),
+            height=cls._coerce_int(data.get("height")),
             tags=tags,
             rating=normalize_rating(data.get("rating")),
             artist=str(data.get("artist") or ""),
             ext=str(data.get("ext") or "jpg"),
-            score=int(data.get("score") or 0),
+            score=cls._coerce_int(data.get("score")),
             referer=str(data.get("referer") or ""),
         )
 
@@ -242,10 +249,10 @@ class SearchQuery:
             if not tag.lstrip("-").lower().startswith(("rating:", "order:", "status:"))
         ]
 
-    def with_page(self, page: int) -> "SearchQuery":
+    def with_page(self, page: int) -> SearchQuery:
         return replace(self, page=page)
 
-    def without_tag(self, tag: str) -> "SearchQuery":
+    def without_tag(self, tag: str) -> SearchQuery:
         remaining = [t for t in parse_tags(self.text) if t != tag]
         return replace(self, text=" ".join(remaining), page=1)
 

@@ -104,6 +104,14 @@ class RoundTripTests(unittest.TestCase):
         self.assertEqual(post.tags, ())
         self.assertEqual(post.rating, SAFE)
 
+    def test_from_dict_tolerates_bad_numbers(self) -> None:
+        post = Post.from_dict(
+            {"id": "1", "width": "abc", "height": None, "score": "NaN-ish"}
+        )
+        self.assertEqual(post.width, 0)
+        self.assertEqual(post.height, 0)
+        self.assertEqual(post.score, 0)
+
 
 class FilterTests(unittest.TestCase):
     def test_parse_filter_tags(self) -> None:

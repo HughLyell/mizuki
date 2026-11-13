@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import os
 import tempfile
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from . import config
 
@@ -46,7 +48,9 @@ class Settings:
 
     def __init__(self, path: Path | None = None) -> None:
         self.path = Path(path) if path else config.SETTINGS_FILE
-        self._data: dict[str, Any] = dict(DEFAULTS)
+        # Deep copy: the mutable defaults (lists/dicts) must never be shared
+        # with the module-level DEFAULTS.
+        self._data: dict[str, Any] = copy.deepcopy(DEFAULTS)
         self._listeners: dict[str, list[Listener]] = defaultdict(list)
         self.load()
 
@@ -67,41 +71,54 @@ class Settings:
         self._validate()
 
     def _validate(self) -> None:
+        for key in DEFAULTS:
+            self._validate_key(key)
+
+    def _validate_key(self, key: str) -> None:
         data = self._data
-        for key in ("safe_search", "blur_nsfw", "sidebar_visible"):
+        if key in ("safe_search", "blur_nsfw", "sidebar_visible"):
             data[key] = bool(data.get(key, DEFAULTS[key]))
-        if data.get("grid_size") not in VALID_GRID_SIZES:
-            data["grid_size"] = DEFAULTS["grid_size"]
-        if data.get("sort") not in VALID_SORTS:
-            data["sort"] = DEFAULTS["sort"]
-        if data.get("color_scheme") not in VALID_SCHEMES:
-            data["color_scheme"] = DEFAULTS["color_scheme"]
-        if data.get("accent") not in VALID_ACCENTS:
-            data["accent"] = DEFAULTS["accent"]
-        if not isinstance(data.get("source"), str):
-            data["source"] = DEFAULTS["source"]
-        sources = data.get("enabled_sources")
-        if not isinstance(sources, list) or not sources:
-            data["enabled_sources"] = list(DEFAULTS["enabled_sources"])
-        else:
-            data["enabled_sources"] = [str(item) for item in sources]
-        recent = data.get("recent_searches")
-        if not isinstance(recent, list):
-            data["recent_searches"] = []
-        else:
-            data["recent_searches"] = [str(item) for item in recent if str(item).strip()][:12]
-        download_dir = data.get("download_dir")
-        if not isinstance(download_dir, str) or not download_dir.strip():
-            data["download_dir"] = DEFAULTS["download_dir"]
-        source_filters = data.get("source_filters")
-        if not isinstance(source_filters, dict):
-            data["source_filters"] = {}
-        else:
-            data["source_filters"] = {
-                str(source_id): str(value)[:500]
-                for source_id, value in source_filters.items()
-                if isinstance(source_id, str) and isinstance(value, str) and value.strip()
-            }
+        elif key == "grid_size":
+            if data.get(key) not in VALID_GRID_SIZES:
+                data[key] = DEFAULTS[key]
+        elif key == "sort":
+            if data.get(key) not in VALID_SORTS:
+                data[key] = DEFAULTS[key]
+        elif key == "color_scheme":
+            if data.get(key) not in VALID_SCHEMES:
+                data[key] = DEFAULTS[key]
+        elif key == "accent":
+            if data.get(key) not in VALID_ACCENTS:
+                data[key] = DEFAULTS[key]
+        elif key == "source":
+            if not isinstance(data.get(key), str):
+                data[key] = DEFAULTS[key]
+        elif key == "enabled_sources":
+            sources = data.get(key)
+            if not isinstance(sources, list) or not sources:
+                data[key] = list(DEFAULTS[key])
+            else:
+                data[key] = [str(item) for item in sources]
+        elif key == "recent_searches":
+            recent = data.get(key)
+            if not isinstance(recent, list):
+                data[key] = []
+            else:
+                data[key] = [str(item) for item in recent if str(item).strip()][:12]
+        elif key == "download_dir":
+            download_dir = data.get(key)
+            if not isinstance(download_dir, str) or not download_dir.strip():
+                data[key] = DEFAULTS[key]
+        elif key == "source_filters":
+            source_filters = data.get(key)
+            if not isinstance(source_filters, dict):
+                data[key] = {}
+            else:
+                data[key] = {
+                    str(source_id): str(value)[:500]
+                    for source_id, value in source_filters.items()
+                    if isinstance(source_id, str) and isinstance(value, str) and value.strip()
+                }
 
     # -- access ----------------------------------------------------------
     def get(self, key: str, default: Any = None) -> Any:
@@ -110,12 +127,18 @@ class Settings:
     def set(self, key: str, value: Any, *, save: bool = True) -> None:
         if key not in DEFAULTS:
             raise KeyError(f"Unknown setting: {key}")
-        if self._data.get(key) == value:
+        previous = self._data.get(key)
+        if previous == value:
             return
         self._data[key] = value
+        # Validate on write so an invalid value can never be stored or saved.
+        self._validate_key(key)
+        new_value = self._data[key]
+        if new_value == previous:
+            return
         if save:
             self.save()
-        self._notify(key, value)
+        self._notify(key, new_value)
 
     def update(self, values: dict[str, Any]) -> None:
         changed = False
@@ -124,8 +147,9 @@ class Settings:
                 raise KeyError(f"Unknown setting: {key}")
             if self._data.get(key) != value:
                 self._data[key] = value
+                self._validate_key(key)
                 changed = True
-                self._notify(key, value)
+                self._notify(key, self._data[key])
         if changed:
             self.save()
 

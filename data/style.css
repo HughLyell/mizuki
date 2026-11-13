@@ -64,7 +64,6 @@ headerbar.mizuki-header {
   background-color: alpha(@window_fg_color, 0.055);
 }
 
-.sidebar source-row image,
 .sidebar list.navigation-sidebar row image {
   opacity: 0.8;
 }
@@ -124,7 +123,7 @@ headerbar.mizuki-header {
   padding: 1px 3px 1px 9px;
   min-height: 24px;
   font-size: 11px;
-  background: none;
+  background-color: transparent;
   border: none;
   box-shadow: none;
 }
@@ -140,7 +139,7 @@ headerbar.mizuki-header {
   padding: 0;
   margin: 1px 2px 1px 0;
   opacity: 0.62;
-  background: none;
+  background-color: transparent;
   border: none;
   box-shadow: none;
 }
@@ -455,6 +454,6 @@ headerbar.mizuki-header {
   opacity: 0.55;
 }
 
-preferences-page {
+preferencespage {
   background-color: @window_bg_color;
 }

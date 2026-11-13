@@ -87,6 +87,36 @@ class SettingsTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             settings.set("definitely_not_a_setting", 1)
 
+    def test_set_validates_value_immediately(self) -> None:
+        settings = Settings(self.path)
+        settings.set("grid_size", "enormous")
+        self.assertEqual(settings.get("grid_size"), "comfortable")
+        settings.set("accent", "neon")
+        self.assertEqual(settings.get("accent"), "mauve")
+        reloaded = Settings(self.path)
+        self.assertEqual(reloaded.get("grid_size"), "comfortable")
+
+    def test_set_coerces_boolean_flags(self) -> None:
+        settings = Settings(self.path)
+        settings.set("safe_search", "yes")
+        self.assertIs(settings.get("safe_search"), True)
+
+    def test_defaults_are_not_shared_with_instances(self) -> None:
+        settings = Settings(self.path)
+        settings.get("enabled_sources").append("mutant")
+        settings.get("recent_searches").append("mutant")
+        self.assertNotIn("mutant", Settings(self.path).get("enabled_sources"))
+        self.assertNotIn("mutant", Settings(self.path).get("recent_searches"))
+
+    def test_set_notifies_with_the_validated_value(self) -> None:
+        settings = Settings(self.path)
+        seen = []
+        settings.subscribe("grid_size", lambda key, value: seen.append(value))
+        settings.set("grid_size", "bogus")
+        self.assertEqual(seen, [])
+        settings.set("grid_size", "large")
+        self.assertEqual(seen, ["large"])
+
     def test_source_filters_round_trip(self) -> None:
         settings = Settings(self.path)
         settings.set_source_filter("danbooru", "1girl, landscape")
@@ -122,6 +152,12 @@ class FavoriteStoreTests(unittest.TestCase):
         store.toggle(make_post("7"))
         reloaded = FavoriteStore(self.path)
         self.assertEqual([post.id for post in reloaded.all()], ["7"])
+
+    def test_keys(self) -> None:
+        store = FavoriteStore(self.path)
+        store.toggle(make_post("7"))
+        store.toggle(make_post("9"))
+        self.assertEqual(store.keys(), {"danbooru:7", "danbooru:9"})
 
     def test_clear(self) -> None:
         store = FavoriteStore(self.path)

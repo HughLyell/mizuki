@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import weakref
+
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -231,9 +233,18 @@ class ImageCard(Gtk.Box):
         if not self.post.thumb_url:
             self._show_load_error()
             return
+        # The loader may outlive this card (grids are cleared on every new
+        # search), so register a weak callback instead of a bound method.
+        self_ref = weakref.ref(self)
+
+        def _deliver(texture, ref=self_ref) -> None:
+            card = ref()
+            if card is not None:
+                card._on_texture(texture)
+
         self.loader.load(
             self.post.thumb_url,
-            self._on_texture,
+            _deliver,
             referer=self.post.referer,
         )
 

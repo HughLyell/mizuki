@@ -32,11 +32,9 @@ class MoebooruSource(Source):
         return {"Accept": "application/json", "Referer": self.base_url + "/"}
 
     def search_tags(self, query: SearchQuery, tags_override: list[str] | None = None) -> list[str]:
-        tags = [
-            tag
-            for tag in (tags_override if tags_override is not None else self.query_tags(query))
-            if not tag.lstrip("-").lower().startswith(("rating:", "order:", "status:"))
-        ]
+        tags = self.strip_meta_tags(
+            tags_override if tags_override is not None else self.query_tags(query)
+        )
         if query.safe:
             tags.append(self.safe_rating)
         if query.sort == "score":
@@ -60,10 +58,11 @@ class MoebooruSource(Source):
             if page.posts:
                 self.remember_variant(query, tags)
                 return page
+        # A hard error must not be hidden behind an earlier empty variant.
+        if last_error is not None and (last_page is None or not last_page.posts):
+            raise last_error
         if last_page is not None:
             return last_page
-        if last_error is not None:
-            raise last_error
         raise SourceError(f"{self.name} allows at most 6 tags per search.")
 
     def _search_tags(self, query: SearchQuery, tags_override: list[str]) -> SourcePage:

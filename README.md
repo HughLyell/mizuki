@@ -11,7 +11,8 @@ browser.
 
 ## Download
 
-Linux builds are available on the [releases page](https://github.com/HughLyell/mizuki/releases/latest):
+Linux builds are available on the [releases page](https://github.com/HughLyell/mizuki/releases/latest)
+for x86_64 and aarch64 (ARM64):
 
 - **Portable launcher (recommended, no FUSE required):**
   [Mizuki-0.1.0-x86_64.run](https://github.com/HughLyell/mizuki/releases/download/v0.1.0/Mizuki-0.1.0-x86_64.run)
@@ -183,6 +184,7 @@ PyGObject. Bump `runtime-version` when a newer runtime is available.
 ```text
 src/mizuki/
 ├── application.py          # Adw.Application, actions, lifecycle
+├── demo.py                 # Headless smoke test, screenshots and demo driver
 ├── main.py                 # CLI entry point
 ├── config.py               # XDG paths, user agent, resource lookup
 ├── models.py               # Post, SearchQuery, tag parsing, filenames
@@ -202,7 +204,7 @@ src/mizuki/
 └── ui/
     ├── window.py           # Main window, sidebar, navigation
     ├── discover.py         # Search panel, filters, suggestions
-    ├── grid.py             # Responsive FlowBox grid
+    ├── grid.py             # Justified-row artwork grid
     ├── card.py             # Artwork tile
     ├── detail.py           # Full artwork dialog
     ├── pages.py            # Favourites and Downloads pages

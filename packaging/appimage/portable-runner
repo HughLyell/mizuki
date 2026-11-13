@@ -11,9 +11,19 @@ SELF="$(readlink -f "$0")"
 CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/mizuki/portable-$VERSION"
 
 if [ ! -x "$CACHE_ROOT/AppRun" ]; then
-    mkdir -p "$CACHE_ROOT"
+    # Extract to a temporary sibling and move it into place so an interrupted
+    # extraction is never reused as if it were complete.
+    TMP_DIR="$CACHE_ROOT.extracting.$$"
+    rm -rf "$TMP_DIR"
+    mkdir -p "$TMP_DIR"
     PAYLOAD_LINE="$(awk '/^__MIZUKI_PAYLOAD__$/{print NR + 1; exit}' "$SELF")"
-    tail -n +"$PAYLOAD_LINE" "$SELF" | tar -xz -C "$CACHE_ROOT"
+    if ! tail -n +"$PAYLOAD_LINE" "$SELF" | tar -xz -C "$TMP_DIR"; then
+        rm -rf "$TMP_DIR"
+        echo "Mizuki: failed to extract the embedded payload." >&2
+        exit 1
+    fi
+    rm -rf "$CACHE_ROOT"
+    mv "$TMP_DIR" "$CACHE_ROOT"
 fi
 
 exec "$CACHE_ROOT/AppRun" "$@"

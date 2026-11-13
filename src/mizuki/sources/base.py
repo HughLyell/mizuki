@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from ..models import Post, SearchQuery, SourcePage, parse_tags, split_comma_groups
 
+# Query metatags that must never reach a source as search tags.
+META_PREFIXES = ("rating:", "order:", "status:")
+
 
 class SourceError(Exception):
     """An error with a message suitable for display to the user."""
@@ -28,8 +31,17 @@ class Source:
     homepage: str = ""
     icon: str = "image-x-generic-symbolic"
     supports_nsfw: bool = True
-    max_tags: int = 0  # 0 means "no documented limit"
+    # Maximum number of user tags the source accepts per query; 0 means "no
+    # documented limit". Adapters are responsible for keeping every term they
+    # send — including any ``order:`` sort metatags — within the source's
+    # budget; :meth:`search_variants` only pre-filters variants whose user-tag
+    # count exceeds this.
+    max_tags: int = 0
     popular_tags: tuple[str, ...] = ()
+    # How this source spells multi-word tags. Boorus use underscores
+    # (``hatsune_miku``); Zerochan tags contain real spaces.
+    tag_separator: str = "_"
+    meta_prefixes: tuple[str, ...] = META_PREFIXES
 
     def search(self, query: SearchQuery) -> SourcePage:  # pragma: no cover - interface
         raise NotImplementedError
@@ -37,6 +49,28 @@ class Source:
     def suggest_tags(self, prefix: str, limit: int = 8) -> list[str]:
         """Return tag completions for ``prefix`` (optional)."""
         return []
+
+    def strip_meta_tags(self, tags: list[str]) -> list[str]:
+        """Remove ``rating:``/``order:``/``status:`` metatags from ``tags``.
+
+        Users may type metatags into the search box; sources add their own
+        rating filter and sort order, so user-provided ones are dropped to
+        keep the safe-search filter from being overridden.
+        """
+        return [
+            tag
+            for tag in tags
+            if not tag.lstrip("-").lower().startswith(self.meta_prefixes)
+        ]
+
+    def normalize_tag(self, tag: str) -> str:
+        """Convert a tag to this source's spelling for multi-word tags."""
+        text = " ".join(str(tag or "").split())
+        if not text:
+            return ""
+        if self.tag_separator == "_":
+            return "_".join(text.split())
+        return text.replace("_", " ")
 
     def query_tags(self, query: SearchQuery) -> list[str]:
         """Return the source-specific tags for a query.

@@ -14,8 +14,9 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any
 
 from . import config
 
@@ -56,6 +57,18 @@ def _url_with_params(url: str, params: Mapping[str, Any] | None) -> str:
     return f"{url}{separator}{urllib.parse.urlencode(clean, doseq=True)}"
 
 
+def _retry_delay(exc: urllib.error.HTTPError, attempt: int) -> float:
+    """Seconds to wait before retrying, honouring the server's Retry-After."""
+    header = exc.headers.get("Retry-After") if exc.headers is not None else None
+    if header:
+        try:
+            # Numeric form only; the HTTP-date form is rare enough to ignore.
+            return max(0.0, min(float(header), 30.0))
+        except ValueError:
+            pass
+    return 0.7 * (attempt + 1)
+
+
 def _open(
     url: str,
     *,
@@ -74,7 +87,7 @@ def _open(
             last_error = exc
             if exc.code not in (429, 500, 502, 503, 504) or attempt >= retries:
                 break
-            time.sleep(0.7 * (attempt + 1))
+            time.sleep(_retry_delay(exc, attempt))
         except urllib.error.URLError as exc:
             last_error = exc
             if attempt >= retries:

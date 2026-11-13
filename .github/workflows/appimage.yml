@@ -1,6 +1,14 @@
 name: AppImage
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/appimage.yml"
+      - "packaging/appimage/**"
+      - "src/**"
+      - "data/**"
+      - "meson.build"
   workflow_dispatch:
 
 permissions:
