@@ -21,6 +21,25 @@ Linux builds are available on the [releases page](https://github.com/HughLyell/m
 
 Both builds require glibc 2.39 or newer.
 
+Standard AppImage runtime files require the legacy **FUSE 2** library. FUSE 3
+does not replace it for AppImage mounting:
+
+```bash
+# Fedora
+sudo dnf install fuse-libs
+
+# Ubuntu 24.04 / Debian 13
+sudo apt install libfuse2t64
+
+# Arch Linux
+sudo pacman -S fuse2
+```
+
+If double-clicking the AppImage does nothing but `./Mizuki-0.1.0-x86_64.AppImage`
+works in a terminal, the file manager is refusing to execute it rather than a
+FUSE problem. If terminal execution reports `libfuse.so.2` missing, install the
+package above or use the portable `.run` launcher.
+
 ## Features
 
 - **Modular sources** — Danbooru, Safebooru, Konachan, Yande.re and Zerochan
