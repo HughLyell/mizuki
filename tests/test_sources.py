@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 import unittest
 
+from mizuki import net
 from mizuki.models import Post, SearchQuery, SourcePage
 from mizuki.sources.base import SourceError, merge_pages
 from mizuki.sources.danbooru import DanbooruSource
@@ -354,6 +355,103 @@ class ZerochanTests(unittest.TestCase):
         self.assertNotIn("old", cache)
         self.assertIn("new", cache)
         self.assertLessEqual(len(cache), 10)
+
+
+class ZerochanCorrectionTests(unittest.TestCase):
+    """Regression: the typo-correction path must still run guest-limit
+    supplementation (it previously broke out before member_only was set)."""
+
+    MEMBER_ONLY_HTML = ZEROCHAN_FIXTURE + '\n<div class="members only">member area</div>'
+
+    def setUp(self) -> None:
+        self.source = ZerochanSource()
+        self._clear_caches()
+
+    def tearDown(self) -> None:
+        self._clear_caches()
+
+    def _clear_caches(self) -> None:
+        with self.source._cache_lock:
+            self.source._resolution_cache.clear()
+            self.source._supplement_cache.clear()
+            self.source._html_cache.clear()
+
+    @staticmethod
+    def _extra_post(post_id: str) -> Post:
+        return Post(
+            id=post_id,
+            source="zerochan",
+            source_name="Zerochan",
+            thumb_url="",
+            preview_url="",
+            file_url="",
+            page_url="",
+        )
+
+    def _arm_typo_404(self) -> None:
+        def fake_fetch_page(url, timeout=25):
+            raise net.NetworkError("HTTP 404: Not Found", status=404)
+
+        self.source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
+        self.source._find_correction = lambda tag: (  # type: ignore[method-assign]
+            self.MEMBER_ONLY_HTML,
+            "shylily",
+        )
+
+    def test_corrected_search_runs_supplementation(self) -> None:
+        self._arm_typo_404()
+        supplemented_with: list[tuple[str, int]] = []
+
+        def fake_supplement(tag, public_posts):
+            supplemented_with.append((tag, len(public_posts)))
+            return (
+                [self._extra_post("9001"), self._extra_post("9002"), self._extra_post("9003")],
+                "guest-limit notice",
+            )
+
+        self.source._supplement = fake_supplement  # type: ignore[method-assign]
+
+        page = self.source.search(SearchQuery(text="shylilly", limit=100, safe=True))
+
+        self.assertEqual(supplemented_with, [("shylily", 2)])
+        self.assertEqual(len(page.posts), 5)
+        self.assertFalse(page.has_more)
+        self.assertIn("shylilly", page.notice)
+        self.assertIn("shylily", page.notice)
+        self.assertIn("guest-limit notice", page.notice)
+
+    def test_corrected_search_without_member_only_skips_supplement(self) -> None:
+        def fake_fetch_page(url, timeout=25):
+            raise net.NetworkError("HTTP 404: Not Found", status=404)
+
+        self.source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
+        self.source._find_correction = lambda tag: (ZEROCHAN_FIXTURE, "shylily")  # type: ignore[method-assign]
+        called: list[str] = []
+        self.source._supplement = lambda tag, posts: called.append(tag) or ([], "")  # type: ignore[method-assign]
+
+        page = self.source.search(SearchQuery(text="shylilly", limit=100, safe=True))
+
+        self.assertEqual(called, [])
+        self.assertEqual(len(page.posts), 2)
+        self.assertIn("shylilly", page.notice)
+        self.assertIn("shylily", page.notice)
+
+    def test_member_only_normal_path_still_supplements(self) -> None:
+        self.source._fetch_page = lambda url, timeout=25: (  # type: ignore[method-assign]
+            self.MEMBER_ONLY_HTML,
+            "https://www.zerochan.net/shylily",
+        )
+        supplemented_with: list[tuple[str, int]] = []
+        self.source._supplement = lambda tag, posts: (  # type: ignore[method-assign]
+            supplemented_with.append((tag, len(posts))) or ([self._extra_post("9001")], "guest-limit notice")
+        )
+
+        page = self.source.search(SearchQuery(text="shylily", limit=100, safe=True))
+
+        self.assertEqual(supplemented_with, [("shylily", 2)])
+        self.assertEqual(len(page.posts), 3)
+        self.assertFalse(page.has_more)
+        self.assertIn("guest-limit notice", page.notice)
 
 
 class MergeTests(unittest.TestCase):

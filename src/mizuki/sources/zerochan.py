@@ -435,6 +435,12 @@ class ZerochanSource(Source):
         if html is None:
             return SourcePage(posts=[], has_more=False, notice=no_results_notice)
 
+        # The typo-correction branch breaks out of the variant loop before the
+        # in-loop member_only assignment runs, so always derive it from the
+        # final successful HTML; otherwise corrected searches never trigger
+        # the guest-limit supplementation below.
+        member_only = "members only" in html.lower()
+
         if chosen_tags:
             with self._cache_lock:
                 self._cache_put(
